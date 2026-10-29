@@ -581,6 +581,19 @@
 
 <script>
 const synth = window.speechSynthesis || null;
+// Inside the Android app (Capacitor) the WebView has no usable speechSynthesis,
+// so we talk to the phone's native text-to-speech plugin instead.
+const NativeTTS = (window.Capacitor && typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform())
+  ? Capacitor.registerPlugin('TextToSpeech') : null;
+const hasSpeech = !!(NativeTTS || synth);
+let nativeVoices = [];
+let speakToken = 0;   // bumps on every cancel so stale 'finished' callbacks are ignored
+
+function cancelSpeech() {
+  speakToken++;
+  if (NativeTTS) { NativeTTS.stop().catch(() => {}); }
+  else if (synth) { synth.cancel(); }
+}
 
 // ---- elements ----
 const setupView = document.getElementById('setup');
@@ -780,8 +793,8 @@ function wordCount(s) { return (s.match(/\S+/g) || []).length; }
 
 // ---- voices ----
 function populateVoices() {
-  if (!synth) { reportDiag(); return; }
-  const voices = synth.getVoices();
+  if (!hasSpeech) { reportDiag(); return; }
+  const voices = NativeTTS ? nativeVoices : synth.getVoices();
   const current = voiceSel.value;
   voiceSel.innerHTML = '';
   const def = document.createElement('option');
@@ -798,11 +811,16 @@ function populateVoices() {
 }
 
 function reportDiag() {
-  const voices = synth ? synth.getVoices() : [];
-  diag.textContent = `speechSynthesis: ${synth ? 'present' : 'missing'}\nvoices reported: ${voices.length}`;
+  const voices = NativeTTS ? nativeVoices : (synth ? synth.getVoices() : []);
+  const engine = NativeTTS ? 'native (Android)' : (synth ? 'browser' : 'missing');
+  diag.textContent = `speech engine: ${engine}\nvoices reported: ${voices.length}`;
 }
 
-if (synth) {
+if (NativeTTS) {
+  NativeTTS.getSupportedVoices()
+    .then((r) => { nativeVoices = (r && r.voices) || []; populateVoices(); })
+    .catch(() => { reportDiag(); });
+} else if (synth) {
   synth.getVoices();
   synth.addEventListener('voiceschanged', populateVoices);
 } else {
@@ -879,12 +897,23 @@ backBtn.addEventListener('click', () => {
 
 // ---- playback core (sentence-queue, never relies on native pause/resume) ----
 function speakSentence(i) {
-  if (!synth) return;
+  if (!hasSpeech) return;
   if (i < 0) i = 0;
   if (i >= sentences.length) { playing = false; setPlayingUI(false); return; }
   idx = i;
   updateHighlight();
   updateProgress();
+
+  if (NativeTTS) {
+    const token = ++speakToken;
+    const opts = { text: sentences[i].text, rate: parseFloat(speedRange.value), lang: 'en-US' };
+    const vIdx = voiceSel.value;
+    if (vIdx !== '' && nativeVoices[vIdx]) { opts.voice = Number(vIdx); opts.lang = nativeVoices[vIdx].lang || opts.lang; }
+    NativeTTS.speak(opts)
+      .then(() => { if (token === speakToken && playing) speakSentence(idx + 1); })
+      .catch(() => { if (token === speakToken) { playing = false; setPlayingUI(false); } });
+    return;
+  }
 
   synth.cancel();
   const u = new SpeechSynthesisUtterance(sentences[i].text);
@@ -898,7 +927,7 @@ function speakSentence(i) {
 }
 
 function play() {
-  if (!synth) { setupNote.textContent = 'No speech engine available.'; return; }
+  if (!hasSpeech) { setupNote.textContent = 'No speech engine available.'; return; }
   playing = true;
   setPlayingUI(true);
   speakSentence(idx);
@@ -906,13 +935,13 @@ function play() {
 
 function pausePlayback() {
   playing = false;
-  if (synth) synth.cancel(); // cancel, don't rely on the unreliable native pause()
+  cancelSpeech(); // cancel, don't rely on the unreliable native pause()
   setPlayingUI(false);
 }
 
 function stopPlayback() {
   playing = false;
-  if (synth) synth.cancel();
+  cancelSpeech();
   idx = 0;
   setPlayingUI(false);
 }
@@ -920,7 +949,7 @@ function stopPlayback() {
 function jumpTo(i, autoplay) {
   idx = Math.max(0, Math.min(sentences.length - 1, i));
   if (autoplay) { playing = true; setPlayingUI(true); speakSentence(idx); }
-  else { if (synth) synth.cancel(); updateHighlight(); updateProgress(); }
+  else { cancelSpeech(); updateHighlight(); updateProgress(); }
 }
 
 playBtn.addEventListener('click', () => { playing ? pausePlayback() : play(); });
@@ -951,7 +980,7 @@ progressWrap.addEventListener('pointerdown', (e) => {
   scrubbing = true;
   resumeAfterScrub = playing;
   playing = false;                 // stop auto-advance while the finger is down
-  if (synth) synth.cancel();
+  cancelSpeech();
   progressWrap.setPointerCapture(e.pointerId);
   progressWrap.classList.add('scrubbing');
   scrubPreview.classList.add('show');
