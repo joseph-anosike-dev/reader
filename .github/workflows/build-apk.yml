@@ -1,6 +1,8 @@
 name: Build APK
 on:
   push:
+    paths:
+      - '*.html'
   workflow_dispatch:
 jobs:
   build:
@@ -21,7 +23,7 @@ jobs:
       - name: Create Capacitor Android project
         run: |
           npm init -y
-          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6
           npx cap init Reader com.reader.app --web-dir=www
           npx cap add android
           npx cap sync android
@@ -34,3 +36,4 @@ jobs:
         with:
           name: reader-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          
