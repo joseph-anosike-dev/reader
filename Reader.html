@@ -592,8 +592,8 @@
 const synth = window.speechSynthesis || null;
 // Inside the Android app (Capacitor) the WebView has no usable speechSynthesis,
 // so we talk to the phone's native text-to-speech plugin instead.
-const NativeTTS = (window.Capacitor && typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform())
-  ? Capacitor.registerPlugin('TextToSpeech') : null;
+// (tts.js, bundled in only by the APK build, sets window.__TTS; it never throws here.)
+const NativeTTS = (function () { try { return window.__TTS || null; } catch (e) { return null; } })();
 const hasSpeech = !!(NativeTTS || synth);
 let nativeVoices = [];
 let speakToken = 0;   // bumps on every cancel so stale 'finished' callbacks are ignored
