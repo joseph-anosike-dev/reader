@@ -112,38 +112,32 @@
     margin: 0 0 28px;
   }
 
-  .dropzone {
+  .add-file {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    border: 1.5px dashed var(--gold);
-    border-radius: 22px;
-    padding: 28px 20px;
-    text-align: center;
-    background: rgba(255, 253, 249, 0.55);
-    color: var(--ink-soft);
-    font-size: 0.95rem;
-    line-height: 1.5;
-    cursor: pointer;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 54px;
+    padding: 14px 20px;
     margin-bottom: 18px;
-    transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s var(--ease);
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    color: #fff;
+    background: var(--red);
+    border: 2px solid var(--gold);
+    border-radius: 18px;
+    box-shadow: inset 0 0 0 1px rgba(220, 200, 148, 0.35), 0 8px 20px rgba(126, 42, 37, 0.22);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.2s ease, transform 0.2s var(--ease), box-shadow 0.2s ease;
   }
-  .dropzone-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: var(--gold-soft);
-    color: var(--red-deep);
-    transition: transform 0.25s var(--ease);
-  }
-  .dropzone:hover { background: var(--surface); border-color: var(--red); }
-  .dropzone:hover .dropzone-icon { transform: translateY(-2px); }
-  .dropzone.dragover { border-color: var(--gold); background: var(--gold-soft); color: var(--ink); transform: scale(1.01); }
-  .dropzone.dragover .dropzone-icon { background: var(--surface); }
-  .dropzone strong { color: var(--ink); font-weight: 650; }
+  .add-file svg { color: var(--gold-soft); flex-shrink: 0; }
+  .add-file:active { background: var(--red-deep); transform: scale(0.99); }
+  .add-file.dragover { background: var(--red-deep); }
+  .add-file:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   #fileInput { display: none; }
 
   #pasteText {
@@ -271,7 +265,7 @@
   .sentence.current {
     background: var(--red);
     color: #fff;
-    box-shadow: 0 8px 22px rgba(126, 42, 37, 0.25);
+    box-shadow: inset 0 0 0 1.5px var(--gold), 0 8px 22px rgba(126, 42, 37, 0.25);
   }
   .sentence.word-active { text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 2px; }
 
@@ -520,12 +514,10 @@
       <ul id="recentList"></ul>
     </section>
 
-    <div class="dropzone" id="dropzone">
-      <span class="dropzone-icon" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
-      </span>
-      <span>Drop a <strong>.md</strong> or <strong>.txt</strong> file here, or tap to choose one</span>
-    </div>
+    <button type="button" class="add-file" id="dropzone">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Add .md or .txt file</span>
+    </button>
     <input type="file" id="fileInput">
 
     <textarea id="pasteText" placeholder="...or paste your note text here"></textarea>
