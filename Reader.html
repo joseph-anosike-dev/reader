@@ -836,16 +836,25 @@ function reportDiag() {
 }
 
 if (NativeTTS) {
-  NativeTTS.getSupportedVoices()
-    .then((r) => {
-      nativeVoices = (r && r.voices) || [];
-      populateVoices();
-      setupNote.textContent = `Voice engine: phone speech · ${nativeVoices.length} voices found`;
-    })
-    .catch((err) => {
-      reportDiag();
-      setupNote.textContent = 'Voice engine error: ' + ((err && err.message) || err);
-    });
+  // The phone's engine can still be starting up, or may not list voices at all
+  // (it then reports null). Retry a few times, then carry on with the default voice.
+  const loadNativeVoices = (attempt) => {
+    NativeTTS.getSupportedVoices()
+      .then((r) => {
+        nativeVoices = (r && r.voices) || [];
+        populateVoices();
+        setupNote.textContent = nativeVoices.length
+          ? `Voice engine: phone speech · ${nativeVoices.length} voices found`
+          : 'Voice engine: phone speech · default voice';
+      })
+      .catch(() => {
+        if (attempt < 4) { setTimeout(() => loadNativeVoices(attempt + 1), 800); return; }
+        nativeVoices = [];
+        populateVoices();
+        setupNote.textContent = 'Voice engine: phone speech · default voice (no voice list)';
+      });
+  };
+  loadNativeVoices(0);
 } else if (synth) {
   synth.getVoices();
   synth.addEventListener('voiceschanged', populateVoices);
