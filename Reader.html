@@ -66,6 +66,23 @@
   }
   #setup > * { width: 100%; max-width: 640px; margin-inline: auto; flex-shrink: 0; }
 
+  /* recent files */
+  #recent { margin-bottom: 18px; }
+  #recent[hidden] { display: none; }
+  .recent-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .recent-head h2 { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); font-weight: 650; }
+  #recentToggle { background: none; border: 0; color: var(--red); font: inherit; font-size: 0.85rem; font-weight: 600; padding: 8px 4px; cursor: pointer; }
+  #recentList { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; }
+  #recentList li { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .recent-open { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 12px 14px; font: inherit; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
+  .recent-open:active { background: var(--paper-dim); }
+  .recent-title { font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-meta { font-size: 0.78rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .recent-bar { display: block; height: 3px; border-radius: 2px; background: var(--line); margin-top: 5px; overflow: hidden; }
+  .recent-bar > span { display: block; height: 100%; background: var(--gold); }
+  .recent-del { width: 48px; flex-shrink: 0; background: none; border: 0; border-left: 1px solid var(--line); color: var(--ink-soft); font-size: 1.3rem; cursor: pointer; }
+  .recent-del:active { background: var(--paper-dim); color: var(--red); }
+
   .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
 
   .brand-mark {
@@ -498,6 +515,11 @@
     </div>
     <p class="sub">Load a note and listen to it, sentence by sentence.</p>
 
+    <section id="recent" hidden>
+      <div class="recent-head"><h2>Recent</h2><button id="recentToggle" type="button"></button></div>
+      <ul id="recentList"></ul>
+    </section>
+
     <div class="dropzone" id="dropzone">
       <span class="dropzone-icon" aria-hidden="true">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
@@ -865,6 +887,119 @@ populateVoices();
 
 speedRange.addEventListener('input', () => { speedLabel.textContent = parseFloat(speedRange.value).toFixed(2) + 'x'; });
 
+// ---- recent files (kept on this phone, with your reading position) ----
+const RECENT_KEY = 'reader.recent', POS_KEY = 'reader.pos';
+const MIN_KEEP = 10, MAX_KEEP = 30;   // always keep at least 10; up to 30 while space allows
+let recent = [], positions = {}, currentId = null, recentExpanded = false;
+
+try { const r = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); if (Array.isArray(r)) recent = r; } catch (e) {}
+try { positions = JSON.parse(localStorage.getItem(POS_KEY) || '{}') || {}; } catch (e) {}
+
+function hashText(t) {
+  let h = 5381;
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36) + '-' + t.length;
+}
+function titleFor(text) {
+  const first = (text.split('\n').find(l => l.trim()) || '').trim();
+  return first.length > 48 ? first.slice(0, 47) + '…' : (first || 'Pasted note');
+}
+function persistPositions() {
+  const ids = new Set(recent.map(r => r.id));
+  Object.keys(positions).forEach(k => { if (!ids.has(k)) delete positions[k]; });
+  try { localStorage.setItem(POS_KEY, JSON.stringify(positions)); } catch (e) {}
+}
+function persistRecent() {
+  while (recent.length > MAX_KEEP) recent.pop();
+  for (;;) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); return; }
+    catch (e) {
+      if (recent.length <= MIN_KEEP) { showToast('Could not save to Recent: phone storage is full.'); return; }
+      recent.pop();   // storage full: drop the oldest, but never below the minimum
+    }
+  }
+}
+function savePos() {
+  if (!currentId) return;
+  positions[currentId] = idx;
+  try { localStorage.setItem(POS_KEY, JSON.stringify(positions)); } catch (e) {}
+}
+function saveRecent(name, text, n) {
+  const fromFile = !!name && name !== 'Untitled';
+  const hash = hashText(text);
+  const id = fromFile ? 'f:' + name : 'p:' + hash;
+  const old = recent.find(r => r.id === id);
+  recent = recent.filter(r => r.id !== id);
+  recent.unshift({ id, name: fromFile ? name : titleFor(text), text, hash, words: wordCount(text), n, updated: Date.now() });
+  if (old && old.hash !== hash) positions[id] = 0;   // file changed: start over
+  persistRecent();
+  persistPositions();
+  return id;
+}
+
+const recentSection = document.getElementById('recent');
+const recentList = document.getElementById('recentList');
+const recentToggle = document.getElementById('recentToggle');
+
+function renderRecent() {
+  recentSection.hidden = recent.length === 0;
+  if (!recent.length) return;
+  const shown = recentExpanded ? recent : recent.slice(0, 3);
+  recentList.innerHTML = '';
+  shown.forEach((r) => {
+    const pos = positions[r.id] || 0;
+    const pct = r.n > 1 ? Math.round((pos / (r.n - 1)) * 100) : 0;
+    const li = document.createElement('li');
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'recent-open';
+    const title = document.createElement('span');
+    title.className = 'recent-title';
+    title.textContent = r.name;
+    const meta = document.createElement('span');
+    meta.className = 'recent-meta';
+    meta.textContent = `${r.words.toLocaleString()} words · ${pct}%`;
+    const bar = document.createElement('span');
+    bar.className = 'recent-bar';
+    const fill = document.createElement('span');
+    fill.style.width = pct + '%';
+    bar.appendChild(fill);
+    open.append(title, meta, bar);
+    open.addEventListener('click', () => openRecent(r.id));
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'recent-del';
+    del.setAttribute('aria-label', 'Remove ' + r.name);
+    del.textContent = '×';
+    del.addEventListener('click', () => {
+      recent = recent.filter(x => x.id !== r.id);
+      persistRecent();
+      persistPositions();
+      renderRecent();
+    });
+
+    li.append(open, del);
+    recentList.appendChild(li);
+  });
+  recentToggle.hidden = recent.length <= 3;
+  recentToggle.textContent = recentExpanded ? 'Show less' : `Show all (${recent.length})`;
+}
+
+function openRecent(id) {
+  const r = recent.find(x => x.id === id);
+  if (!r) return;
+  loadedName = id.startsWith('f:') ? r.name : 'Untitled';
+  pasteText.value = r.text;
+  startBtn.disabled = false;
+  let p = positions[id] || 0;
+  if (p >= r.n - 1) p = 0;   // finished last time: start from the top
+  buildPlayer(r.text, p);
+}
+
+recentToggle.addEventListener('click', () => { recentExpanded = !recentExpanded; renderRecent(); });
+
 // ---- setup view: loading text ----
 function setSourceText(raw, label) {
   const cleaned = stripMarkdown(raw);
@@ -875,6 +1010,7 @@ function setSourceText(raw, label) {
 
 pasteText.addEventListener('input', () => {
   startBtn.disabled = !pasteText.value.trim();
+  loadedName = 'Untitled';
 });
 
 dropzone.addEventListener('click', () => fileInput.click());
@@ -884,6 +1020,8 @@ fileInput.addEventListener('change', (e) => loadFile(e.target.files[0]));
 dropzone.addEventListener('drop', (e) => loadFile(e.dataTransfer.files[0]));
 
 let loadedName = 'Untitled';
+renderRecent();
+
 function loadFile(f) {
   if (!f) return;
   loadedName = f.name;
@@ -900,11 +1038,12 @@ startBtn.addEventListener('click', () => {
 });
 
 // ---- building the player ----
-function buildPlayer(text) {
+function buildPlayer(text, startIdx) {
   const raw = splitSentences(text);
   sentences = raw.map(t => ({ text: t, el: null }));
-  idx = 0;
+  idx = Math.max(0, Math.min(sentences.length - 1, startIdx || 0));
   playing = false;
+  currentId = saveRecent(loadedName, text, sentences.length);
 
   sentencesEl.innerHTML = '';
   sentences.forEach((s, i) => {
@@ -923,12 +1062,14 @@ function buildPlayer(text) {
 
   setupView.classList.remove('active');
   playerView.classList.add('active');
+  if (idx > 0) requestAnimationFrame(() => updateHighlight(true));
 }
 
 backBtn.addEventListener('click', () => {
   stopPlayback();
   playerView.classList.remove('active');
   setupView.classList.add('active');
+  renderRecent();
 });
 
 // ---- playback core (sentence-queue, never relies on native pause/resume) ----
@@ -1059,6 +1200,7 @@ function updateProgress() {
   const total = sentences.length || 1;
   progressFill.style.width = `${(idx / Math.max(1, total - 1)) * 100}%`;
   progressCount.textContent = `${Math.min(idx + 1, total)} / ${total}`;
+  savePos();
 
   const wordsTotal = sentences.reduce((n, s) => n + wordCount(s.text), 0);
   const wordsDone = sentences.slice(0, idx).reduce((n, s) => n + wordCount(s.text), 0);
