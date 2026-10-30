@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '*.html'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 jobs:
   build:
@@ -16,14 +17,23 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - name: Prepare web files
+      - name: Install packages
+        run: |
+          npm init -y
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6 esbuild
+      - name: Prepare web files (bundle the speech plugin)
         run: |
           mkdir -p www
           cp "$(ls *.html | head -n1)" www/index.html
-      - name: Create Capacitor Android project
+          cat > tts-entry.js <<'JS'
+          import { Capacitor } from '@capacitor/core';
+          import { TextToSpeech } from '@capacitor-community/text-to-speech';
+          window.__TTS = Capacitor.isNativePlatform() ? TextToSpeech : null;
+          JS
+          npx esbuild tts-entry.js --bundle --format=iife --minify --outfile=www/tts.js
+          sed -i '0,/<script>/s|<script>|<script src="tts.js"></script>\n<script>|' www/index.html
+      - name: Create Android project
         run: |
-          npm init -y
-          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6
           npx cap init Reader com.reader.app --web-dir=www
           npx cap add android
           npx cap sync android
