@@ -475,6 +475,14 @@
     opacity: 0; pointer-events: none; transition: opacity 0.25s ease; z-index: 9;
   }
   #scrim.open { opacity: 1; pointer-events: auto; }
+  #toast {
+    position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom));
+    z-index: 20; padding: 12px 16px; border-radius: 14px;
+    background: var(--red-deep); color: #fff; font-size: 0.88rem; line-height: 1.4;
+    box-shadow: var(--shadow-float); opacity: 0; transform: translateY(8px);
+    pointer-events: none; transition: opacity 0.2s ease, transform 0.2s var(--ease);
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
 </style>
 </head>
 <body>
@@ -496,7 +504,7 @@
       </span>
       <span>Drop a <strong>.md</strong> or <strong>.txt</strong> file here, or tap to choose one</span>
     </div>
-    <input type="file" id="fileInput" accept=".md,.txt">
+    <input type="file" id="fileInput">
 
     <textarea id="pasteText" placeholder="...or paste your note text here"></textarea>
 
@@ -545,6 +553,7 @@
 </div>
 
 <div id="scrim"></div>
+<div id="toast" role="status"></div>
 <div id="settingsSheet">
   <h2>Voice &amp; speed</h2>
   <div class="field">
@@ -588,6 +597,16 @@ const NativeTTS = (window.Capacitor && typeof Capacitor.isNativePlatform === 'fu
 const hasSpeech = !!(NativeTTS || synth);
 let nativeVoices = [];
 let speakToken = 0;   // bumps on every cancel so stale 'finished' callbacks are ignored
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 6000);
+}
 
 function cancelSpeech() {
   speakToken++;
@@ -818,8 +837,15 @@ function reportDiag() {
 
 if (NativeTTS) {
   NativeTTS.getSupportedVoices()
-    .then((r) => { nativeVoices = (r && r.voices) || []; populateVoices(); })
-    .catch(() => { reportDiag(); });
+    .then((r) => {
+      nativeVoices = (r && r.voices) || [];
+      populateVoices();
+      setupNote.textContent = `Voice engine: phone speech · ${nativeVoices.length} voices found`;
+    })
+    .catch((err) => {
+      reportDiag();
+      setupNote.textContent = 'Voice engine error: ' + ((err && err.message) || err);
+    });
 } else if (synth) {
   synth.getVoices();
   synth.addEventListener('voiceschanged', populateVoices);
@@ -854,6 +880,7 @@ function loadFile(f) {
   loadedName = f.name;
   const r = new FileReader();
   r.onload = () => setSourceText(r.result, f.name);
+  r.onerror = () => { setupNote.textContent = 'Could not read that file. Try pasting the text instead.'; };
   r.readAsText(f);
 }
 
@@ -911,7 +938,11 @@ function speakSentence(i) {
     if (vIdx !== '' && nativeVoices[vIdx]) { opts.voice = Number(vIdx); opts.lang = nativeVoices[vIdx].lang || opts.lang; }
     NativeTTS.speak(opts)
       .then(() => { if (token === speakToken && playing) speakSentence(idx + 1); })
-      .catch(() => { if (token === speakToken) { playing = false; setPlayingUI(false); } });
+      .catch((err) => {
+        if (token !== speakToken) return;
+        playing = false; setPlayingUI(false);
+        showToast('Speech error: ' + ((err && err.message) || err));
+      });
     return;
   }
 
