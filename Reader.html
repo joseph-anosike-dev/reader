@@ -135,6 +135,9 @@
     transition: background 0.2s ease, transform 0.2s var(--ease), box-shadow 0.2s ease;
   }
   .add-file svg { color: var(--gold-soft); flex-shrink: 0; }
+  .add-file-text { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+  .add-file-text strong { font-weight: 650; font-size: 1rem; }
+  .add-file-text small { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em; color: var(--gold-soft); }
   .add-file:active { background: var(--red-deep); transform: scale(0.99); }
   .add-file.dragover { background: var(--red-deep); }
   .add-file:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
@@ -516,7 +519,7 @@
 
     <button type="button" class="add-file" id="dropzone">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      <span>Add .md or .txt file</span>
+      <span class="add-file-text"><strong>Add a file</strong><small>md · txt · pdf · docx · pptx</small></span>
     </button>
     <input type="file" id="fileInput">
 
@@ -1014,9 +1017,35 @@ dropzone.addEventListener('drop', (e) => loadFile(e.dataTransfer.files[0]));
 let loadedName = 'Untitled';
 renderRecent();
 
+async function loadDocument(f, ext) {
+  if (!window.__DOCS) {
+    setupNote.textContent = 'PDF, Word and PowerPoint files can be read in the Android app version.';
+    return;
+  }
+  setupNote.textContent = 'Reading file…';
+  try {
+    const text = await window.__DOCS.read(f, ext, (p, n) => { setupNote.textContent = `Reading page ${p} of ${n}…`; });
+    if (!text || !text.trim()) {
+      setupNote.textContent = ext === 'pdf'
+        ? 'No readable text found. This PDF may be scanned images.'
+        : 'No readable text found in that file.';
+      return;
+    }
+    setSourceText(text, f.name);
+  } catch (err) {
+    setupNote.textContent = 'Could not read that file: ' + ((err && err.message) || err);
+  }
+}
+
 function loadFile(f) {
   if (!f) return;
   loadedName = f.name;
+  const ext = (f.name.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf' || ext === 'docx' || ext === 'pptx') { loadDocument(f, ext); return; }
+  if (ext === 'doc' || ext === 'ppt') {
+    setupNote.textContent = `Old .${ext} files can't be read. Open it, save it as .${ext}x, then add it again.`;
+    return;
+  }
   const r = new FileReader();
   r.onload = () => setSourceText(r.result, f.name);
   r.onerror = () => { setupNote.textContent = 'Could not read that file. Try pasting the text instead.'; };
