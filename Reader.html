@@ -50,6 +50,8 @@
     font-family: var(--font-ui);
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
+    overflow: hidden;            /* the page itself never scrolls */
+    overscroll-behavior: none;
   }
 
   body {
@@ -60,29 +62,31 @@
   }
 
   button { font-family: inherit; }
+  [hidden] { display: none !important; }
 
   /* ---------- layout shell ---------- */
-  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
 
   .view { flex: 1; display: none; flex-direction: column; min-height: 0; }
   .view.active { display: flex; }
 
   /* ---------- setup view ---------- */
   #setup {
-    padding: max(36px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom));
-    overflow-y: auto;
+    padding: max(16px, env(safe-area-inset-top)) 18px max(14px, env(safe-area-inset-bottom));
+    overflow: hidden;
   }
   #setup > * { width: 100%; max-width: 640px; margin-inline: auto; flex-shrink: 0; }
+  #setup > #pasteText { flex: 1 1 0; min-height: 0; }   /* the one thing that scrolls here */
 
   /* recent files */
-  #recent { margin-bottom: 18px; }
+  #recent { margin-bottom: 10px; }
   #recent[hidden] { display: none; }
-  .recent-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .recent-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
   .recent-head h2 { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); font-weight: 650; }
-  #recentToggle { background: none; border: 0; color: var(--red); font: inherit; font-size: 0.85rem; font-weight: 600; padding: 8px 4px; cursor: pointer; }
-  #recentList { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; }
+  #recentToggle { background: none; border: 0; color: var(--red); font: inherit; font-size: 0.85rem; font-weight: 600; padding: 6px 4px; cursor: pointer; }
+  #recentList { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; }
   #recentList li { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-  .recent-open { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 12px 14px; font: inherit; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
+  .recent-open { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 9px 14px; font: inherit; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
   .recent-open:active { background: var(--paper-dim); }
   .recent-title { font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .recent-meta { font-size: 0.78rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
@@ -91,12 +95,12 @@
   .recent-del { width: 48px; flex-shrink: 0; background: none; border: 0; border-left: 1px solid var(--line); color: var(--ink-soft); font-size: 1.3rem; cursor: pointer; }
   .recent-del:active { background: var(--paper-dim); color: var(--red); }
 
-  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
 
   .brand-mark {
-    width: 46px;
-    height: 46px;
-    border-radius: 14px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
     background: var(--red);
     color: var(--gold-soft);
     display: grid;
@@ -106,7 +110,7 @@
 
   #setup h1 {
     font-family: var(--font-read);
-    font-size: 2.1rem;
+    font-size: 1.8rem;
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.1;
@@ -115,9 +119,9 @@
 
   #setup .sub {
     color: var(--ink-soft);
-    font-size: 1rem;
-    line-height: 1.5;
-    margin: 0 0 28px;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    margin: 0 0 12px;
   }
 
   .add-file {
@@ -126,9 +130,9 @@
     justify-content: center;
     gap: 10px;
     width: 100%;
-    min-height: 54px;
-    padding: 14px 20px;
-    margin-bottom: 18px;
+    min-height: 50px;
+    padding: 10px 20px;
+    margin-bottom: 12px;
     font: inherit;
     font-size: 1rem;
     font-weight: 650;
@@ -153,8 +157,8 @@
 
   #pasteText {
     display: block;
-    min-height: 220px;
-    padding: 18px 20px;
+    min-height: 0;
+    padding: 14px 16px;
     border: 1px solid var(--line);
     border-radius: 22px;
     background: var(--surface);
@@ -163,7 +167,8 @@
     font-size: 1.05rem;
     line-height: 1.7;
     color: var(--ink);
-    resize: vertical;
+    resize: none;
+    overflow-y: auto;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   #pasteText::placeholder { color: var(--ink-soft); opacity: 0.7; }
@@ -175,8 +180,8 @@
 
   #startBtn {
     display: block;
-    margin-top: 18px;
-    padding: 17px;
+    margin-top: 12px;
+    padding: 15px;
     border: none;
     border-radius: 16px;
     background: var(--red);
@@ -192,14 +197,14 @@
   #startBtn:disabled { background: var(--ink-soft); opacity: 0.45; cursor: default; box-shadow: none; }
   #startBtn:active:not(:disabled) { background: var(--red-deep); transform: translateY(0); box-shadow: 0 4px 10px rgba(126, 42, 37, 0.3); }
 
-  #setupNote { font-size: 0.85rem; color: var(--ink-soft); margin-top: 12px; min-height: 1.3em; text-align: center; }
+  #setupNote { font-size: 0.82rem; color: var(--ink-soft); margin-top: 8px; min-height: 1.2em; text-align: center; }
 
   /* ---------- player view ---------- */
   #playerTopbar {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: max(12px, env(safe-area-inset-top)) max(14px, calc((100% - 720px) / 2)) 10px;
+    padding: max(8px, env(safe-area-inset-top)) max(14px, calc((100% - 720px) / 2)) 6px;
     border-bottom: 1px solid var(--line);
     background: rgba(244, 240, 232, 0.8);
     -webkit-backdrop-filter: blur(12px);
@@ -233,7 +238,7 @@
     white-space: nowrap;
   }
 
-  #settingsBtn {
+  #settingsBtn, #sectionsBtn {
     border: none;
     background: none;
     color: var(--ink);
@@ -246,12 +251,12 @@
     cursor: pointer;
     transition: background 0.15s ease;
   }
-  #settingsBtn:hover { background: var(--paper-dim); }
+  #settingsBtn:hover, #sectionsBtn:hover { background: var(--paper-dim); }
 
   #sentences {
     flex: 1;
     overflow-y: auto;
-    padding: 32px max(20px, calc((100% - 680px) / 2)) 22vh;
+    padding: 18px max(20px, calc((100% - 680px) / 2)) 22vh;
     font-family: var(--font-read);
     font-size: var(--read-size, 1.2rem);
     line-height: var(--read-lh, 1.8);
@@ -283,17 +288,17 @@
   /* ---------- transport bar ---------- */
   #transportBar {
     flex-shrink: 0;
-    width: calc(100% - 24px);
+    width: calc(100% - 16px);
     max-width: 680px;
-    margin: 0 auto max(12px, env(safe-area-inset-bottom));
-    padding: 6px 22px 16px;
+    margin: 0 auto max(8px, env(safe-area-inset-bottom));
+    padding: 0 18px 8px;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 30px;
     box-shadow: var(--shadow-float);
   }
 
-  #progressWrap { padding: 20px 0 12px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #progressWrap { padding: 14px 0 4px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
   #progressWrap.scrubbing #progressFill { transition: none; }
   #progressFill::after { transition: transform 0.15s var(--ease); }
   #progressWrap.scrubbing #progressFill::after { transform: scale(1.5); }
@@ -345,23 +350,23 @@
     font-size: 0.78rem;
     color: var(--ink-soft);
     font-variant-numeric: tabular-nums;
-    margin-top: 10px;
+    margin-top: 8px;
   }
 
   .transport {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 22px;
-    padding-top: 4px;
+    gap: 30px;
+    padding-top: 0;
   }
 
   .icon-btn {
     border: none;
     background: transparent;
     color: var(--ink);
-    width: 50px;
-    height: 50px;
+    width: 58px;
+    height: 58px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -372,10 +377,10 @@
   .icon-btn:hover { background: var(--paper-dim); }
   .icon-btn:active { transform: scale(0.92); }
   .icon-btn:focus-visible, #settingsBtn:focus-visible, #startBtn:focus-visible,
-  #backBtn:focus-visible, .play-btn:focus-visible, #closeSettings:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  #backBtn:focus-visible, #sectionsBtn:focus-visible, .play-btn:focus-visible, #closeSettings:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 
   .play-btn {
-    width: 72px; height: 72px;
+    width: 66px; height: 66px;
     border-radius: 50%;
     border: none;
     background: var(--red);
@@ -389,7 +394,7 @@
   .play-btn:active { transform: scale(0.95); box-shadow: 0 0 0 4px rgba(126, 42, 37, 0.12), 0 4px 10px rgba(126, 42, 37, 0.3); }
 
   /* ---------- settings sheet ---------- */
-  #settingsSheet {
+  .sheet {
     position: fixed;
     inset: auto 0 0 0;
     max-width: 520px;
@@ -405,7 +410,7 @@
     overflow-y: auto;
     box-shadow: 0 -12px 40px rgba(28, 26, 23, 0.2);
   }
-  #settingsSheet::before {
+  .sheet::before {
     content: "";
     position: absolute;
     top: 9px;
@@ -416,9 +421,9 @@
     border-radius: 2px;
     background: var(--paper-dim);
   }
-  #settingsSheet.open { transform: translateY(0); visibility: visible; transition-delay: 0s; }
+  .sheet.open { transform: translateY(0); visibility: visible; transition-delay: 0s; }
 
-  #settingsSheet h2 {
+  .sheet h2 {
     font-family: var(--font-read);
     font-size: 1.25rem;
     font-weight: 600;
@@ -450,37 +455,55 @@
   select:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(176, 138, 62, 0.22); }
 
   .speed-row { display: flex; align-items: center; gap: 14px; }
+
+  /* shared slider look: tall touch area, thin filled track, big thumb */
   input[type=range] {
-    flex: 1; -webkit-appearance: none; appearance: none;
-    height: 6px; background: var(--gold-soft); border-radius: 3px; outline: none;
+    flex: 1; min-width: 0; width: 100%;
+    -webkit-appearance: none; appearance: none;
+    height: 44px; margin: 0; padding: 0;
+    background: transparent; outline: none; cursor: pointer;
+    touch-action: none;
   }
-  input[type=range]::-moz-range-track { height: 6px; background: var(--gold-soft); border-radius: 3px; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 8px; border-radius: 4px;
+    background: linear-gradient(to right, var(--gold) var(--pct, 0%), var(--gold-soft) var(--pct, 0%));
+  }
+  input[type=range]::-moz-range-track {
+    height: 8px; border-radius: 4px;
+    background: linear-gradient(to right, var(--gold) var(--pct, 0%), var(--gold-soft) var(--pct, 0%));
+  }
   input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%;
+    -webkit-appearance: none; width: 30px; height: 30px; margin-top: -11px; border-radius: 50%;
     background: var(--gold); border: 4px solid var(--surface); cursor: pointer;
     box-shadow: 0 0 0 1px var(--gold), 0 2px 8px rgba(28, 26, 23, 0.3);
   }
   input[type=range]::-moz-range-thumb {
-    width: 18px; height: 18px; border-radius: 50%;
+    box-sizing: border-box; width: 30px; height: 30px; border-radius: 50%;
     background: var(--gold); border: 4px solid var(--surface); cursor: pointer;
     box-shadow: 0 0 0 1px var(--gold), 0 2px 8px rgba(28, 26, 23, 0.3);
   }
   input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px var(--gold), 0 0 0 6px rgba(176, 138, 62, 0.3); }
+
+  /* volume + speed rows under the transport buttons */
+  .slider-row { display: flex; align-items: center; gap: 10px; height: 46px; }
+  .slider-row + .slider-row { margin-top: 6px; }
+  .slider-ico { width: 26px; flex-shrink: 0; display: grid; place-items: center; color: var(--ink-soft); }
+  .slider-val { width: 52px; flex-shrink: 0; text-align: right; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
   .speed-value {
     min-width: 52px; text-align: center;
     padding: 6px 0; border-radius: 999px; background: var(--paper);
     color: var(--ink); font-size: 0.88rem; font-weight: 600; font-variant-numeric: tabular-nums;
   }
 
-  #closeSettings {
+  #closeSettings, .sheet-done {
     width: 100%; padding: 15px; margin-top: 2px;
     border: none; border-radius: 14px;
     background: var(--ink); color: var(--paper);
     font-size: 0.98rem; font-weight: 600; cursor: pointer;
     transition: transform 0.12s var(--ease), background 0.15s ease;
   }
-  #closeSettings:hover { background: #2E2A25; }
-  #closeSettings:active { transform: scale(0.98); }
+  #closeSettings:hover, .sheet-done:hover { background: #2E2A25; }
+  #closeSettings:active, .sheet-done:active { transform: scale(0.98); }
 
   details { margin-top: 16px; }
   summary { cursor: pointer; font-size: 0.8rem; color: var(--ink-soft); list-style: none; text-align: center; }
@@ -505,6 +528,30 @@
     pointer-events: none; transition: opacity 0.2s ease, transform 0.2s var(--ease);
   }
   #toast.show { opacity: 1; transform: translateY(0); }
+
+  /* headings read as section titles in the reader */
+  .sentence.heading { font-size: 1.08em; letter-spacing: 0.01em; margin-top: 14px; }
+  .sentence.heading.h1 { font-size: 1.28em; }
+  .sentence.heading.h2 { font-size: 1.16em; }
+  .sentence:not(.current).heading { color: var(--red-deep); }
+
+  /* sheet lists (sections, recent) */
+  .sheet-scroll { position: relative; max-height: 56dvh; overflow-y: auto; overscroll-behavior: contain; margin: 0 -8px 16px; padding: 0 8px; }
+  .sec-item {
+    display: block; width: 100%; min-height: 48px; text-align: left;
+    padding: 12px 14px; border: 0; border-radius: 12px; background: none;
+    font: inherit; font-size: 0.98rem; color: var(--ink); cursor: pointer;
+  }
+  .sec-item:active { background: var(--paper-dim); }
+  .sec-item.current { background: var(--gold-wash); color: var(--red-deep); font-weight: 600; }
+  #recentAllList { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; }
+  #recentAllList li { display: flex; align-items: stretch; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+
+  /* short phones: keep the home screen free of scrolling */
+  @media (max-height: 700px) {
+    #setup .sub { display: none; }
+    #recentList li:nth-child(n+3) { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -545,7 +592,10 @@
         Back
       </button>
       <div id="docTitle">Untitled</div>
-      <button id="settingsBtn" title="Voice &amp; speed" aria-label="Voice and speed settings">
+      <button id="sectionsBtn" title="Jump to section" aria-label="Jump to section" hidden>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.6" cy="6" r="1.1" fill="currentColor"/><circle cx="4.6" cy="12" r="1.1" fill="currentColor"/><circle cx="4.6" cy="18" r="1.1" fill="currentColor"/></svg>
+      </button>
+      <button id="settingsBtn" title="Voice &amp; text" aria-label="Voice and text settings">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.4"/><circle cx="10" cy="17" r="2.4"/></svg>
       </button>
     </div>
@@ -563,14 +613,24 @@
       </div>
       <div class="transport">
         <button class="icon-btn" id="prevBtn" title="Previous sentence" aria-label="Previous sentence">
-          <svg width="24" height="24" viewBox="0 0 24 24"><path d="M18 6v12M6 12l10-7v14z" fill="currentColor"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="3" height="14" rx="1.2" fill="currentColor"/><path d="M20 6v12L9.5 12z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </button>
         <button class="play-btn" id="playBtn" title="Play" aria-label="Play or pause">
           <svg id="playIcon" width="28" height="28" viewBox="0 0 24 24"><path d="M7 5v14l12-7z" fill="currentColor"/></svg>
         </button>
         <button class="icon-btn" id="nextBtn" title="Next sentence" aria-label="Next sentence">
-          <svg width="24" height="24" viewBox="0 0 24 24"><path d="M6 6v12M18 12L8 5v14z" fill="currentColor"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12l10.5-6z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><rect x="17" y="5" width="3" height="14" rx="1.2" fill="currentColor"/></svg>
         </button>
+      </div>
+      <div class="slider-row">
+        <span class="slider-ico" title="Volume"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6M18.6 6.4a8 8 0 0 1 0 11.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+        <input type="range" id="volumeRange" min="0" max="100" step="1" value="100" aria-label="Volume">
+        <span class="slider-val" id="volumeLabel">100%</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-ico" title="Speed"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6v12l9-6zM12 6v12l9-6z" fill="currentColor"/></svg></span>
+        <input type="range" id="speedRange" min="0.5" max="2" step="0.05" value="1" aria-label="Reading speed">
+        <span class="slider-val" id="speedLabel">1.00x</span>
       </div>
     </div>
   </div>
@@ -579,18 +639,11 @@
 
 <div id="scrim"></div>
 <div id="toast" role="status"></div>
-<div id="settingsSheet">
-  <h2>Voice &amp; speed</h2>
+<div id="settingsSheet" class="sheet">
+  <h2>Voice &amp; text</h2>
   <div class="field">
     <label for="voiceSel">Voice</label>
     <select id="voiceSel"></select>
-  </div>
-  <div class="field">
-    <label for="speedRange">Speed</label>
-    <div class="speed-row">
-      <input type="range" id="speedRange" min="0.5" max="2" step="0.05" value="1">
-      <span class="speed-value" id="speedLabel">1.0x</span>
-    </div>
   </div>
   <div class="field">
     <label for="sizeRange">Text size</label>
@@ -611,6 +664,18 @@
     <summary>Status</summary>
     <div id="diag"></div>
   </details>
+</div>
+
+<div id="sectionsSheet" class="sheet">
+  <h2>Jump to section</h2>
+  <div class="sheet-scroll" id="sectionsList"></div>
+  <button class="sheet-done" id="closeSections" data-close-sheet>Done</button>
+</div>
+
+<div id="recentSheet" class="sheet">
+  <h2>Recent</h2>
+  <div class="sheet-scroll"><ul id="recentAllList"></ul></div>
+  <button class="sheet-done" id="closeRecent" data-close-sheet>Done</button>
 </div>
 
 <script>
@@ -674,6 +739,13 @@ const sizeLabel = document.getElementById('sizeLabel');
 const lhRange = document.getElementById('lhRange');
 const lhLabel = document.getElementById('lhLabel');
 const diag = document.getElementById('diag');
+const volumeRange = document.getElementById('volumeRange');
+const volumeLabel = document.getElementById('volumeLabel');
+const sectionsBtn = document.getElementById('sectionsBtn');
+const sectionsSheet = document.getElementById('sectionsSheet');
+const sectionsList = document.getElementById('sectionsList');
+const recentSheet = document.getElementById('recentSheet');
+const recentAllList = document.getElementById('recentAllList');
 
 const ICON_PLAY = '<path d="M7 5v14l12-7z" fill="currentColor"/>';
 const ICON_PAUSE = '<rect x="6" y="5" width="4" height="14" fill="currentColor"/><rect x="14" y="5" width="4" height="14" fill="currentColor"/>';
@@ -684,16 +756,68 @@ let idx = 0;
 let playing = false;  // true = we intend continuous playback / auto-advance
 
 // ---- helpers ----
+const HAS_WORD = /[\p{L}\p{N}]/u;
+const HTML_TAGS = /<\/?(?:br|p|div|span|a|b|i|u|em|strong|sub|sup|small|mark|font|center|details|summary|table|thead|tbody|tr|td|th|ul|ol|li|img|hr)\b[^>]*>/gi;
+const TABLE_RULE = /^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*$/gm;
+const SUPERSCRIPT_REF = /(?<=\p{L}{3,}|[.,;:!?)"”’])[⁰¹²³⁴⁵⁶⁷⁸⁹]+(?=\s|[.,;:!?)]|$)/gu;
+
+// run fn on the parts of a string that are not inside `inline code`
+function outsideCode(s, fn) {
+  return s.split(/(`[^`\n]*`)/).map((part, i) => (i % 2 ? part : fn(part))).join('');
+}
+
+// footnote markers, citations, rules and other things nobody wants read aloud
+function stripNoise(s) {
+  s = s
+    .replace(/<sup>[^<\n]*<\/sup>/gi, '')                                          // <sup>4</sup>
+    .replace(HTML_TAGS, '')
+    .replace(/^[ \t]*\[\^[^\]\n]+\]:.*(?:\n(?:[ \t]{2,}|\t).*)*/gm, '')            // [^4]: footnote text
+    .replace(/^[ \t]*\[[^\]\n]+\]:[ \t]*(?:https?:\/\/|www\.|<)\S*.*$/gm, '')       // [1]: http://link-definition
+    .replace(/^[ \t]*(?:[-*_=][ \t]*){3,}$/gm, '')                                  // --- *** ___ rules
+    .replace(TABLE_RULE, '');                                                       // |---|---| table rules
+  return outsideCode(s, (p) => p
+    .replace(/\[([^\]\n]+)\]\[[^\]\n]*\]/g, '$1')                                   // [text][ref] -> text
+    .replace(/[ \t]*\[\^[^\]\n]+\]/g, '')                                           // [^4]
+    .replace(/[ \t]*\[\s*(?:citation needed|clarification needed)\s*\]/gi, '')
+    .replace(/[ \t]*\[\d{1,3}(?:[ \t]*[-–,][ \t]*\d{1,3})*\](?!\()/g, '')           // [4]  [1,2]  [3-5]
+    .replace(SUPERSCRIPT_REF, ''));                                                 // word⁴
+}
+
+// Headings ("# Title") are kept as markers so the player can build its section list.
 function stripMarkdown(s) {
+  s = s.replace(/```[\s\S]*?```/g, '');
+  s = stripNoise(s);
   return s
-    .replace(/```[\s\S]*?```/g, '')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/==(?=\S)([^=\n]*?\S)==/g, '$1')   // ==highlight== -> highlight
     .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[\[(?:[^\]|]*\|)?([^\]]+)\]\]/g, '$1')   // [[wiki|label]] -> label
     .replace(/\[([^\]]+)\]\(.*?\)/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
     .replace(/[*_~>]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+// Turns cleaned text into [{ text, level? }]: headings become their own entries.
+function parseBlocks(text) {
+  const out = [];
+  let chunk = [];
+  const flushChunk = () => {
+    if (chunk.length) splitSentences(chunk.join('\n')).forEach((t) => out.push({ text: t }));
+    chunk = [];
+  };
+  text.split('\n').forEach((line) => {
+    const m = line.match(/^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/);
+    if (m) {
+      flushChunk();
+      const title = m[2].trim();
+      if (HAS_WORD.test(title)) out.push({ text: title, level: m[1].length });
+    } else {
+      chunk.push(line);
+    }
+  });
+  flushChunk();
+  return out.filter((b) => HAS_WORD.test(b.text));   // drop lines with nothing speakable
 }
 
 /**
@@ -888,7 +1012,58 @@ if (NativeTTS) {
 }
 populateVoices();
 
-speedRange.addEventListener('input', () => { speedLabel.textContent = parseFloat(speedRange.value).toFixed(2) + 'x'; });
+// ---- sliders: speed + volume ----
+function paintRange(el) {
+  const min = parseFloat(el.min) || 0, max = parseFloat(el.max) || 1;
+  el.style.setProperty('--pct', ((parseFloat(el.value) - min) / (max - min)) * 100 + '%');
+}
+
+function showSpeed() {
+  speedLabel.textContent = parseFloat(speedRange.value).toFixed(2) + 'x';
+  paintRange(speedRange);
+}
+try { const sv = localStorage.getItem('reader.speed'); if (sv) speedRange.value = sv; } catch (e) {}
+showSpeed();
+speedRange.addEventListener('input', showSpeed);
+
+// In the Android app, volume is the phone's real media volume (window.__VOL, set by the
+// bundled native plugin) and follows the hardware buttons. In a plain browser the page
+// cannot touch system volume, so the slider sets this reader's own speech volume instead.
+const VOL = (function () { try { return window.__VOL || null; } catch (e) { return null; } })();
+let volDragging = false;
+
+function showVolume() {
+  volumeLabel.textContent = Math.round((volumeRange.value / volumeRange.max) * 100) + '%';
+  paintRange(volumeRange);
+}
+function currentVolume() { return volumeRange.value / volumeRange.max; }   // 0..1
+
+async function syncVolume() {
+  if (!VOL || volDragging) return;
+  try {
+    const r = await VOL.getVolume();
+    if (r && r.max > 0) { volumeRange.max = r.max; volumeRange.value = r.level; showVolume(); }
+  } catch (e) {}
+}
+
+if (!VOL) {
+  try { const vv = localStorage.getItem('reader.volume'); if (vv !== null) volumeRange.value = vv; } catch (e) {}
+}
+showVolume();
+volumeRange.addEventListener('input', () => {
+  showVolume();
+  if (VOL) VOL.setVolume({ level: parseInt(volumeRange.value, 10) }).catch(() => {});
+  else { try { localStorage.setItem('reader.volume', volumeRange.value); } catch (e) {} }
+});
+volumeRange.addEventListener('pointerdown', () => { volDragging = true; });
+['pointerup', 'pointercancel'].forEach((evt) => window.addEventListener(evt, () => {
+  if (volDragging) { volDragging = false; syncVolume(); }
+}));
+if (VOL) {
+  syncVolume();
+  setInterval(() => { if (playerView.classList.contains('active')) syncVolume(); }, 500);   // follows hardware buttons
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncVolume(); });
+}
 
 // ---- recent files (kept on this phone, with your reading position) ----
 const RECENT_KEY = 'reader.recent', POS_KEY = 'reader.pos';
@@ -904,7 +1079,7 @@ function hashText(t) {
   return (h >>> 0).toString(36) + '-' + t.length;
 }
 function titleFor(text) {
-  const first = (text.split('\n').find(l => l.trim()) || '').trim();
+  const first = (text.split('\n').find(l => l.trim()) || '').trim().replace(/^#{1,6}\s+/, '');
   return first.length > 48 ? first.slice(0, 47) + '…' : (first || 'Pasted note');
 }
 function persistPositions() {
@@ -944,50 +1119,57 @@ const recentSection = document.getElementById('recent');
 const recentList = document.getElementById('recentList');
 const recentToggle = document.getElementById('recentToggle');
 
+function buildRecentItem(r, inSheet) {
+  const pos = positions[r.id] || 0;
+  const pct = r.n > 1 ? Math.round((pos / (r.n - 1)) * 100) : 0;
+  const li = document.createElement('li');
+
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'recent-open';
+  const title = document.createElement('span');
+  title.className = 'recent-title';
+  title.textContent = r.name;
+  const meta = document.createElement('span');
+  meta.className = 'recent-meta';
+  meta.textContent = `${r.words.toLocaleString()} words · ${pct}%`;
+  const bar = document.createElement('span');
+  bar.className = 'recent-bar';
+  const fill = document.createElement('span');
+  fill.style.width = pct + '%';
+  bar.appendChild(fill);
+  open.append(title, meta, bar);
+  open.addEventListener('click', () => { if (inSheet) closeSheets(); openRecent(r.id); });
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'recent-del';
+  del.setAttribute('aria-label', 'Remove ' + r.name);
+  del.textContent = '×';
+  del.addEventListener('click', () => {
+    recent = recent.filter(x => x.id !== r.id);
+    persistRecent();
+    persistPositions();
+    renderRecent();
+  });
+
+  li.append(open, del);
+  return li;
+}
+
+function fillRecent(ul, items, inSheet) {
+  ul.innerHTML = '';
+  items.forEach((r) => ul.appendChild(buildRecentItem(r, inSheet)));
+}
+
 function renderRecent() {
   recentSection.hidden = recent.length === 0;
-  if (!recent.length) return;
-  const shown = recentExpanded ? recent : recent.slice(0, 3);
-  recentList.innerHTML = '';
-  shown.forEach((r) => {
-    const pos = positions[r.id] || 0;
-    const pct = r.n > 1 ? Math.round((pos / (r.n - 1)) * 100) : 0;
-    const li = document.createElement('li');
-
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'recent-open';
-    const title = document.createElement('span');
-    title.className = 'recent-title';
-    title.textContent = r.name;
-    const meta = document.createElement('span');
-    meta.className = 'recent-meta';
-    meta.textContent = `${r.words.toLocaleString()} words · ${pct}%`;
-    const bar = document.createElement('span');
-    bar.className = 'recent-bar';
-    const fill = document.createElement('span');
-    fill.style.width = pct + '%';
-    bar.appendChild(fill);
-    open.append(title, meta, bar);
-    open.addEventListener('click', () => openRecent(r.id));
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'recent-del';
-    del.setAttribute('aria-label', 'Remove ' + r.name);
-    del.textContent = '×';
-    del.addEventListener('click', () => {
-      recent = recent.filter(x => x.id !== r.id);
-      persistRecent();
-      persistPositions();
-      renderRecent();
-    });
-
-    li.append(open, del);
-    recentList.appendChild(li);
-  });
+  fillRecent(recentList, recent.slice(0, 3), false);
   recentToggle.hidden = recent.length <= 3;
-  recentToggle.textContent = recentExpanded ? 'Show less' : `Show all (${recent.length})`;
+  recentToggle.textContent = `All (${recent.length})`;
+  if (recentSheet.classList.contains('open')) {
+    if (recent.length) fillRecent(recentAllList, recent, true); else closeSheets();
+  }
 }
 
 function openRecent(id) {
@@ -1001,7 +1183,7 @@ function openRecent(id) {
   buildPlayer(r.text, p);
 }
 
-recentToggle.addEventListener('click', () => { recentExpanded = !recentExpanded; renderRecent(); });
+recentToggle.addEventListener('click', () => { fillRecent(recentAllList, recent, true); openSheet(recentSheet); });
 
 // ---- setup view: loading text ----
 function setSourceText(raw, label) {
@@ -1061,15 +1243,16 @@ function loadFile(f) {
 }
 
 startBtn.addEventListener('click', () => {
-  const text = stripMarkdown(pasteText.value);
-  if (!text.trim()) return;
-  buildPlayer(text);
+  if (!pasteText.value.trim()) return;
+  buildPlayer(pasteText.value);
 });
 
 // ---- building the player ----
-function buildPlayer(text, startIdx) {
-  const raw = splitSentences(text);
-  sentences = raw.map(t => ({ text: t, el: null }));
+function buildPlayer(rawText, startIdx) {
+  const text = stripMarkdown(rawText);   // idempotent: also tidies notes saved by older versions
+  const blocks = parseBlocks(text);
+  if (!blocks.length) { setupNote.textContent = 'Nothing readable in that text.'; return; }
+  sentences = blocks.map(b => ({ text: b.text, level: b.level || 0, el: null }));
   idx = Math.max(0, Math.min(sentences.length - 1, startIdx || 0));
   playing = false;
   currentId = saveRecent(loadedName, text, sentences.length);
@@ -1077,13 +1260,14 @@ function buildPlayer(text, startIdx) {
   sentencesEl.innerHTML = '';
   sentences.forEach((s, i) => {
     const div = document.createElement('div');
-    div.className = 'sentence';
+    div.className = 'sentence' + (s.level ? ' heading h' + Math.min(s.level, 3) : '');
     div.textContent = s.text;
     div.addEventListener('click', () => jumpTo(i, true));
     sentencesEl.appendChild(div);
     s.el = div;
   });
 
+  buildSections();
   docTitle.textContent = loadedName !== 'Untitled' ? loadedName : `${sentences.length} sentences`;
   updateHighlight();
   updateProgress();
@@ -1113,6 +1297,7 @@ function speakSentence(i) {
   if (NativeTTS) {
     const token = ++speakToken;
     const opts = { text: sentences[i].text, rate: parseFloat(speedRange.value), lang: 'en-US' };
+    if (!VOL) opts.volume = currentVolume();
     const vIdx = voiceSel.value;
     if (vIdx !== '' && nativeVoices[vIdx]) { opts.voice = Number(vIdx); opts.lang = nativeVoices[vIdx].lang || opts.lang; }
     NativeTTS.speak(opts)
@@ -1128,6 +1313,7 @@ function speakSentence(i) {
   synth.cancel();
   const u = new SpeechSynthesisUtterance(sentences[i].text);
   u.rate = parseFloat(speedRange.value);
+  u.volume = currentVolume();
   const vIdx = voiceSel.value;
   if (vIdx !== '') u.voice = synth.getVoices()[vIdx];
 
@@ -1240,13 +1426,48 @@ function updateProgress() {
 }
 
 // ---- settings sheet ----
-function openSettings() { settingsSheet.classList.add('open'); scrim.classList.add('open'); }
-function closeSettingsSheet() { settingsSheet.classList.remove('open'); scrim.classList.remove('open'); }
-settingsBtn.addEventListener('click', openSettings);
-closeSettings.addEventListener('click', closeSettingsSheet);
-scrim.addEventListener('click', closeSettingsSheet);
+function openSheet(el) { el.classList.add('open'); scrim.classList.add('open'); }
+function closeSheets() {
+  document.querySelectorAll('.sheet.open').forEach((el) => el.classList.remove('open'));
+  scrim.classList.remove('open');
+}
+settingsBtn.addEventListener('click', () => openSheet(settingsSheet));
+closeSettings.addEventListener('click', closeSheets);
+document.querySelectorAll('[data-close-sheet]').forEach((b) => b.addEventListener('click', closeSheets));
+scrim.addEventListener('click', closeSheets);
 
-speedRange.addEventListener('change', () => { if (playing) speakSentence(idx); else updateProgress(); });
+speedRange.addEventListener('change', () => {
+  try { localStorage.setItem('reader.speed', speedRange.value); } catch (e) {}
+  if (playing) speakSentence(idx); else updateProgress();
+});
+
+// ---- jump to section (markdown headings, PDF table of contents, Word headings) ----
+let sections = [];
+function buildSections() {
+  sections = [];
+  sentences.forEach((s, i) => { if (s.level) sections.push({ i, level: s.level, title: s.text }); });
+  sectionsBtn.hidden = sections.length === 0;
+}
+function openSections() {
+  if (!sections.length) return;
+  const base = Math.min(...sections.map((x) => x.level));
+  let cur = -1;
+  sections.forEach((x, k) => { if (x.i <= idx) cur = k; });
+  sectionsList.innerHTML = '';
+  sections.forEach((x, k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sec-item' + (k === cur ? ' current' : '');
+    b.style.paddingLeft = (14 + Math.min(x.level - base, 4) * 16) + 'px';
+    b.textContent = x.title;
+    b.addEventListener('click', () => { closeSheets(); jumpTo(x.i, playing); });
+    sectionsList.appendChild(b);
+  });
+  openSheet(sectionsSheet);
+  const el = sectionsList.children[cur];
+  sectionsList.scrollTop = el ? Math.max(0, el.offsetTop - sectionsList.clientHeight / 2 + el.offsetHeight / 2) : 0;
+}
+sectionsBtn.addEventListener('click', openSections);
 voiceSel.addEventListener('change', () => { if (playing) speakSentence(idx); });
 
 // ---- text size & line spacing ----
@@ -1255,6 +1476,7 @@ function applyTextPrefs(save) {
   const lh = parseFloat(lhRange.value);
   sentencesEl.style.setProperty('--read-size', size + 'rem');
   sentencesEl.style.setProperty('--read-lh', lh);
+  paintRange(sizeRange); paintRange(lhRange);
   sizeLabel.textContent = size.toFixed(2);
   lhLabel.textContent = lh.toFixed(2);
   if (save) {

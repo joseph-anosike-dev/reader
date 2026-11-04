@@ -63,7 +63,81 @@ async function extractPdf(buf, onProgress) {
     if (onProgress) onProgress(p, pdf.numPages);
     if (p % 3 === 0) await tick();   // let the screen update on long files
   }
-  return pagesToText(pages);
+  const outline = await readOutline(pdf);
+  return pagesToText(pages, outline);
+}
+
+// The PDF's own table of contents (bookmarks), flattened to { title, level, page }.
+async function readOutline(pdf) {
+  let tree = null;
+  try { tree = await pdf.getOutline(); } catch (e) { /* no outline */ }
+  if (!tree || !tree.length) return [];
+  const items = [];
+  const walk = async (nodes, depth) => {
+    for (const n of nodes) {
+      const title = (n.title || '').replace(/\s+/g, ' ').trim();
+      let page = -1;
+      try {
+        let dest = n.dest;
+        if (typeof dest === 'string') dest = await pdf.getDestination(dest);
+        if (Array.isArray(dest) && dest[0] != null) {
+          page = typeof dest[0] === 'object' ? await pdf.getPageIndex(dest[0]) : dest[0];
+        }
+      } catch (e) { /* unresolved bookmark: skip it */ }
+      if (title && page >= 0 && page < pdf.numPages) items.push({ title, level: Math.min(depth, 6), page });
+      if (n.items && n.items.length) await walk(n.items, depth + 1);
+    }
+  };
+  try { await walk(tree, 1); } catch (e) { return []; }
+  return items;
+}
+
+const normTitle = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+// Marks the page line that matches each bookmark as a heading (a title wrapped over up to
+// three lines is merged). A bookmark with no matching line gets its title added at the top
+// of its page, so every entry in the table of contents still has a place to jump to.
+function applyOutline(pages, outline) {
+  const synth = pages.map(() => []);
+  outline.forEach((it) => {
+    const lines = pages[it.page];
+    const target = normTitle(it.title);
+    if (!lines || !target) return;
+    let hit = false;
+    for (let s = 0; s < lines.length && !hit; s++) {
+      if (lines[s].level) continue;
+      let acc = '';
+      for (let e = s; e < Math.min(lines.length, s + 3); e++) {
+        if (lines[e].level) break;
+        acc += lines[e].text;
+        const a = normTitle(acc);
+        if (a === target) {
+          if (e > s) {
+            lines[s].text = lines.slice(s, e + 1).map((l) => l.text).join(' ');
+            lines.splice(s + 1, e - s);
+          }
+          lines[s].level = it.level;
+          hit = true;
+          break;
+        }
+        if (a.length >= target.length) break;
+      }
+    }
+    if (!hit) synth[it.page].push({ text: it.title, y: 0, h: 0, width: 0, level: it.level });
+  });
+  return pages.map((lines, i) => (synth[i].length ? [...synth[i], ...lines] : lines));
+}
+
+// No bookmarks: fall back to lines set in clearly larger type than the body text.
+function guessHeadings(pages, medH) {
+  const total = pages.reduce((n, l) => n + l.length, 0);
+  const isBig = (l) => l.h > medH * 1.2 && l.text.length < 100 && /[\p{L}]/u.test(l.text) && !/[.,;:]$/.test(l.text);
+  const sizes = [...new Set(pages.flat().filter(isBig).map((l) => Math.round(l.h * 2) / 2))].sort((a, b) => b - a).slice(0, 3);
+  const marked = pages.flat().filter(isBig).length;
+  if (!sizes.length || marked > total * 0.25) return;   // looks like noise, not headings
+  pages.forEach((lines) => lines.forEach((l) => {
+    if (isBig(l)) l.level = sizes.indexOf(Math.round(l.h * 2) / 2) + 1 || 3;
+  }));
 }
 
 // Lines that sit clearly apart from the body (a big vertical gap) at the very top or
@@ -82,7 +156,7 @@ function edgeBlocks(lines) {
   return out;
 }
 
-function pagesToText(pages) {
+function pagesToText(pages, outline) {
   // 1. Drop running headers/footers: an isolated line at the top or bottom of a page
   //    that repeats (digits ignored) on at least half the pages, and bare page numbers.
   //    Body text is never removed, even if a line happens to repeat.
@@ -113,6 +187,9 @@ function pagesToText(pages) {
   const ws = all.map((l) => l.width).sort((a, b) => a - b);
   const fullW = ws[Math.floor(ws.length * 0.9)];
 
+  if (outline && outline.length) pages = applyOutline(pages, outline);
+  else guessHeadings(pages, medH);
+
   const isHeading = (l) =>
     l.text.length < 120 &&
     ((l.h > medH * 1.15) || (!ENDS_SENTENCE.test(l.text) && l.width < fullW * 0.6 && l.text.length < 80));
@@ -125,6 +202,12 @@ function pagesToText(pages) {
 
   pages.forEach((lines) => {
     lines.forEach((l, i) => {
+      if (l.level) {   // a bookmarked / detected section title: its own paragraph, marked as a heading
+        flush();
+        paras.push('#'.repeat(l.level) + ' ' + l.text);
+        prev = { y: l.y, heading: true };
+        return;
+      }
       const heading = isHeading(l);
       const bullet = BULLET.test(l.text);
       const bigGap = prev && i > 0 && prev.y - l.y > l.h * 1.6;
@@ -145,8 +228,30 @@ function pagesToText(pages) {
 
 /* ---------------- Word (.docx) ---------------- */
 async function extractDocx(buf) {
-  const r = await mammoth.extractRawText({ arrayBuffer: buf });
-  return r.value.replace(/\n{2,}/g, '\n').trim();
+  const r = await mammoth.convertToHtml({ arrayBuffer: buf });
+  const doc = new DOMParser().parseFromString(r.value, 'text/html');
+  const out = [];
+  const isNote = (el) => /^(footnote|endnote)-/.test(el.id || '');
+  const walk = (node) => {
+    for (const el of node.children) {
+      const tag = el.tagName.toLowerCase();
+      if (isNote(el)) continue;
+      if (/^h[1-6]$/.test(tag)) {
+        const t = el.textContent.replace(/\s+/g, ' ').trim();
+        if (t) out.push('#'.repeat(Number(tag[1])) + ' ' + t);
+      } else if (tag === 'ol' || tag === 'ul') {
+        if (el.querySelector(':scope > li[id^="footnote-"], :scope > li[id^="endnote-"]')) continue;
+        walk(el);
+      } else if (['table', 'tbody', 'thead', 'tr', 'td', 'th', 'div', 'blockquote'].includes(tag)) {
+        walk(el);
+      } else {
+        const t = el.textContent.replace(/\s+/g, ' ').trim();
+        if (t) out.push(t);
+      }
+    }
+  };
+  walk(doc.body);
+  return out.join('\n').trim();
 }
 
 /* ---------------- PowerPoint (.pptx) ---------------- */
