@@ -151,6 +151,7 @@ jobs:
           import android.speech.tts.TextToSpeech;
           import android.speech.tts.UtteranceProgressListener;
           import android.speech.tts.Voice;
+          import java.util.ArrayDeque;
           import java.util.ArrayList;
           import java.util.Collections;
           import java.util.List;
@@ -183,6 +184,9 @@ jobs:
               static volatile float rate = 1f;
               static volatile String voiceKey = "";
               static volatile String lang = "en-US";
+              static volatile int loopA = -1;        // A-B loop (both -1 = off)
+              static volatile int loopB = -1;
+              static volatile boolean repeatAll = false;   // go back to the start after the last sentence
               static volatile Listener listener;
               static volatile ReaderPlaybackService instance;
 
@@ -195,6 +199,8 @@ jobs:
               private boolean pendingStart = false;
               private int token = 0;       // bumps on every flush so stale callbacks are ignored
               private int queuedTo = -1;   // last sentence handed to the speech engine
+              private final ArrayDeque<Integer> queue = new ArrayDeque<Integer>();  // handed over, not yet started
+              private boolean curStarted = false;
               private boolean resumeOnFocus = false;
               private boolean noisyRegistered = false;
               private String appliedVoice = null;
@@ -346,8 +352,11 @@ jobs:
                   applyVoice();
                   tts.setSpeechRate(rate);
                   token++;
+                  queue.clear();
+                  curStarted = false;
                   queuedTo = i;
                   int r = tts.speak(textAt(i), TextToSpeech.QUEUE_FLUSH, null, uid(token, i));
+                  if (r == TextToSpeech.SUCCESS) queue.add(i);
                   if (r != TextToSpeech.SUCCESS) {
                       // sentence the engine refused (e.g. too long): skip it
                       if (i + 1 < sentences.size()) { speakFrom(i + 1); return; }
@@ -358,17 +367,34 @@ jobs:
                   refresh();
               }
 
+              // Which sentence follows k: loops back at B (A-B loop), or at the end of the file (repeat). -1 = nothing.
+              private int nextOf(int k) {
+                  int a = loopA, b = loopB;
+                  if (a >= 0 && b >= a && k == b) return a;
+                  if (k + 1 < sentences.size()) return k + 1;
+                  return repeatAll ? 0 : -1;
+              }
+
+              // Keeps exactly one sentence queued after the one being spoken, so there is no gap between sentences.
               private void queueAhead() {
-                  int next = queuedTo + 1;
-                  if (playing && ttsReady && next < sentences.size() && next <= index + 1) {
-                      int r = tts.speak(textAt(next), TextToSpeech.QUEUE_ADD, null, uid(token, next));
-                      if (r == TextToSpeech.SUCCESS) queuedTo = next;
+                  if (!playing || !ttsReady) return;
+                  int want = curStarted ? 1 : 2;
+                  while (queue.size() < want) {
+                      int n = nextOf(queuedTo);
+                      if (n < 0) return;
+                      int r = tts.speak(textAt(n), TextToSpeech.QUEUE_ADD, null, uid(token, n));
+                      if (r != TextToSpeech.SUCCESS) return;
+                      queue.add(n);
+                      queuedTo = n;
                   }
               }
 
               private void utteranceStarted(String id) {
                   int[] p = parseId(id);
                   if (p == null || p[0] != token || !playing) return;
+                  Integer front = queue.peekFirst();
+                  if (front != null && front.intValue() == p[1]) queue.pollFirst();
+                  curStarted = true;
                   index = p[1];
                   Listener l = listener;
                   if (l != null) l.onSentence(index, gen);
@@ -379,8 +405,18 @@ jobs:
               private void utteranceDone(String id) {
                   int[] p = parseId(id);
                   if (p == null || p[0] != token || !playing) return;
-                  if (p[1] >= sentences.size() - 1) { finishBook(); return; }
+                  if (queue.isEmpty() && nextOf(p[1]) < 0) { finishBook(); return; }
                   queueAhead();
+              }
+
+              // The page changed the loop / repeat settings (main thread). If the sentence already queued
+              // ahead is no longer the right one, restart the current sentence so the new setting applies.
+              void loopChanged() {
+                  if (!playing || !ttsReady || !curStarted) return;
+                  Integer ahead = queue.peekFirst();
+                  int want = nextOf(index);
+                  boolean stale = (ahead == null) ? (want >= 0) : (ahead.intValue() != want);
+                  if (stale) speakFrom(index);
               }
 
               private void utteranceError(String id) {
@@ -396,6 +432,8 @@ jobs:
                   playing = false;
                   pendingStart = false;
                   token++;
+                  queue.clear();
+                  curStarted = false;
                   try { if (tts != null) tts.stop(); } catch (Exception e) {}
                   releaseWake();
                   unregisterNoisy();
@@ -407,6 +445,8 @@ jobs:
               private void finishBook() {
                   playing = false;
                   token++;
+                  queue.clear();
+                  curStarted = false;
                   releaseWake();
                   unregisterNoisy();
                   abandonFocus();
@@ -420,6 +460,8 @@ jobs:
                   playing = false;
                   pendingStart = false;
                   token++;
+                  queue.clear();
+                  curStarted = false;
                   try { if (tts != null) tts.stop(); } catch (Exception e) {}
                   releaseWake();
                   unregisterNoisy();
@@ -677,6 +719,9 @@ jobs:
                   ReaderPlaybackService.lang = call.getString("lang", "en-US");
                   ReaderPlaybackService.title = call.getString("title", "Reader");
                   ReaderPlaybackService.gen = call.getInt("gen", 0);
+                  ReaderPlaybackService.loopA = call.getInt("loopA", -1);
+                  ReaderPlaybackService.loopB = call.getInt("loopB", -1);
+                  ReaderPlaybackService.repeatAll = call.getBoolean("repeat", false);
                   ReaderPlaybackService.playing = true;
                   Context ctx = getContext();
                   Intent i = new Intent(ctx, ReaderPlaybackService.class).setAction(ReaderPlaybackService.A_PLAY);
@@ -687,6 +732,17 @@ jobs:
                       ReaderPlaybackService.playing = false;
                       call.reject("Could not start background playback: " + e.getMessage());
                   }
+              }
+
+              // A-B loop / repeat-file settings changed on the page.
+              @PluginMethod
+              public void setLoop(final PluginCall call) {
+                  ReaderPlaybackService.loopA = call.getInt("a", -1);
+                  ReaderPlaybackService.loopB = call.getInt("b", -1);
+                  ReaderPlaybackService.repeatAll = call.getBoolean("repeat", false);
+                  final ReaderPlaybackService s = ReaderPlaybackService.instance;
+                  if (s != null) main.post(new Runnable() { @Override public void run() { s.loopChanged(); } });
+                  call.resolve();
               }
 
               @PluginMethod
