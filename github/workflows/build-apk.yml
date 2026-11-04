@@ -1,0 +1,122 @@
+name: Build APK
+on:
+  push:
+    paths:
+      - '*.html'
+      - 'docs-entry.js'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install packages
+        run: |
+          npm init -y
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6 esbuild pdfjs-dist@4.10.38 mammoth@1.8.0 jszip@3.10.1
+      - name: Prepare web files (bundle speech and document readers)
+        run: |
+          mkdir -p www
+          cp "$(ls *.html | head -n1)" www/index.html
+          cat > tts-entry.js <<'JS'
+          import { Capacitor, registerPlugin } from '@capacitor/core';
+          import { TextToSpeech } from '@capacitor-community/text-to-speech';
+          window.__TTS = Capacitor.isNativePlatform() ? TextToSpeech : null;
+          window.__VOL = Capacitor.isNativePlatform() ? registerPlugin('SystemVolume') : null;
+          JS
+          npx esbuild tts-entry.js --bundle --format=iife --minify --outfile=www/tts.js
+          SCRIPTS='<script src="tts.js"></script>'
+          if [ -f docs-entry.js ]; then
+            npx esbuild docs-entry.js --bundle --format=iife --minify --outfile=www/docs.js
+            SCRIPTS="$SCRIPTS"$'\n''<script src="docs.js"></script>'
+          else
+            echo "docs-entry.js not found: PDF, Word and PowerPoint reading will be skipped"
+          fi
+          SCRIPTS="$SCRIPTS" python3 - <<'PY'
+          import os
+          p = 'www/index.html'
+          s = open(p, encoding='utf-8').read()
+          s = s.replace('<script>', os.environ['SCRIPTS'] + '\n<script>', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
+      - name: Create Android project
+        run: |
+          npx cap init Reader com.reader.app --web-dir=www
+          npx cap add android
+          npx cap sync android
+      - name: Add system volume plugin
+        run: |
+          DIR=android/app/src/main/java/com/reader/app
+          cat > $DIR/SystemVolumePlugin.java <<'JAVA'
+          package com.reader.app;
+
+          import android.content.Context;
+          import android.media.AudioManager;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          // Reads and sets the phone's real media volume (the one the volume buttons change).
+          @CapacitorPlugin(name = "SystemVolume")
+          public class SystemVolumePlugin extends Plugin {
+              private AudioManager audio() {
+                  return (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+              }
+
+              @PluginMethod
+              public void getVolume(PluginCall call) {
+                  AudioManager am = audio();
+                  JSObject ret = new JSObject();
+                  ret.put("level", am.getStreamVolume(AudioManager.STREAM_MUSIC));
+                  ret.put("max", am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+                  call.resolve(ret);
+              }
+
+              @PluginMethod
+              public void setVolume(PluginCall call) {
+                  Integer level = call.getInt("level");
+                  if (level == null) { call.reject("level is required"); return; }
+                  AudioManager am = audio();
+                  int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                  am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.max(0, Math.min(max, level)), 0);
+                  call.resolve();
+              }
+          }
+          JAVA
+          cat > $DIR/MainActivity.java <<'JAVA'
+          package com.reader.app;
+
+          import android.media.AudioManager;
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(SystemVolumePlugin.class);
+                  super.onCreate(savedInstanceState);
+                  // hardware volume buttons control media volume while the app is open
+                  setVolumeControlStream(AudioManager.STREAM_MUSIC);
+              }
+          }
+          JAVA
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          
