@@ -283,6 +283,17 @@
     color: #fff;
     box-shadow: inset 0 0 0 1.5px var(--gold), 0 8px 22px rgba(126, 42, 37, 0.25);
   }
+  /* A-B loop markers */
+  .sentence.ab-in:not(.current) { background: var(--gold-wash); }
+  .sentence.ab-a:not(.current), .sentence.ab-b:not(.current) { box-shadow: inset 0 0 0 1.5px var(--gold); }
+  .sentence.ab-a::before, .sentence.ab-b::before {
+    display: inline-block; vertical-align: middle; margin-right: 8px;
+    font-size: 0.62em; font-weight: 700; line-height: 1.5; padding: 0 6px; border-radius: 6px;
+    background: var(--gold); color: #fff;
+  }
+  .sentence.ab-a::before { content: 'A'; }
+  .sentence.ab-b::before { content: 'B'; }
+  .sentence.ab-a.ab-b::before { content: 'A-B'; }
   .sentence.word-active { text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 2px; }
 
   /* ---------- transport bar ---------- */
@@ -357,7 +368,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 30px;
+    gap: clamp(8px, 3.2vw, 26px);
     padding-top: 0;
   }
 
@@ -375,6 +386,10 @@
     transition: background 0.15s ease, transform 0.1s ease;
   }
   .icon-btn:hover { background: var(--paper-dim); }
+  .icon-btn.small { width: 46px; height: 46px; }
+  .icon-btn.toggle { color: var(--ink); opacity: 0.5; }
+  .icon-btn.toggle.on { opacity: 1; color: var(--red); background: var(--gold-wash); }
+  .ab-text { font-weight: 700; font-size: 13px; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; }
   .icon-btn:active { transform: scale(0.92); }
   .icon-btn:focus-visible, #settingsBtn:focus-visible, #startBtn:focus-visible,
   #backBtn:focus-visible, #sectionsBtn:focus-visible, .play-btn:focus-visible, #closeSettings:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
@@ -612,6 +627,9 @@
         </div>
       </div>
       <div class="transport">
+        <button class="icon-btn small toggle" id="repeatBtn" title="Repeat the whole file" aria-label="Repeat the whole file" aria-pressed="false">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg>
+        </button>
         <button class="icon-btn" id="prevBtn" title="Previous sentence" aria-label="Previous sentence">
           <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="3" height="14" rx="1.2" fill="currentColor"/><path d="M20 6v12L9.5 12z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         </button>
@@ -620,6 +638,9 @@
         </button>
         <button class="icon-btn" id="nextBtn" title="Next sentence" aria-label="Next sentence">
           <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12l10.5-6z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><rect x="17" y="5" width="3" height="14" rx="1.2" fill="currentColor"/></svg>
+        </button>
+        <button class="icon-btn small toggle" id="abBtn" title="A-B loop: tap to set the start, tap again to set the end, tap again to clear" aria-label="A-B loop" aria-pressed="false">
+          <span class="ab-text" id="abText">A-B</span>
         </button>
       </div>
       <div class="slider-row">
@@ -732,6 +753,11 @@ const progressEta = document.getElementById('progressEta');
 const prevBtn = document.getElementById('prevBtn');
 const playBtn = document.getElementById('playBtn');
 const nextBtn = document.getElementById('nextBtn');
+const repeatBtn = document.getElementById('repeatBtn');
+const abBtn = document.getElementById('abBtn');
+const abText = document.getElementById('abText');
+let repeatAll = false;     // start over after the last sentence (not remembered between sessions)
+let abA = -1, abB = -1;    // A-B loop, as sentence numbers (-1 = not set)
 
 const scrim = document.getElementById('scrim');
 const settingsSheet = document.getElementById('settingsSheet');
@@ -1258,6 +1284,7 @@ function buildPlayer(rawText, startIdx) {
   const blocks = parseBlocks(text);
   if (!blocks.length) { setupNote.textContent = 'Nothing readable in that text.'; return; }
   sentences = blocks.map(b => ({ text: b.text, level: b.level || 0, el: null }));
+  resetLoops();
   idx = Math.max(0, Math.min(sentences.length - 1, startIdx || 0));
   playing = false;
   currentId = saveRecent(loadedName, text, sentences.length);
@@ -1319,6 +1346,9 @@ async function bgPlay(i) {
       rate: parseFloat(speedRange.value),
       voice: v ? (v.voiceURI || v.name || '') : '',
       lang: (v && v.lang) || 'en-US',
+      loopA: loopRange().a,
+      loopB: loopRange().b,
+      repeat: repeatAll,
       title: loadedName !== 'Untitled' ? loadedName : 'Reader'
     });
   } catch (err) {
@@ -1387,7 +1417,7 @@ function speakSentence(i) {
     const vIdx = voiceSel.value;
     if (vIdx !== '' && nativeVoices[vIdx]) { opts.voice = Number(vIdx); opts.lang = nativeVoices[vIdx].lang || opts.lang; }
     NativeTTS.speak(opts)
-      .then(() => { if (token === speakToken && playing) speakSentence(idx + 1); })
+      .then(() => { if (token === speakToken && playing) speakSentence(nextAfter(idx)); })
       .catch((err) => {
         if (token !== speakToken) return;
         playing = false; setPlayingUI(false);
@@ -1403,7 +1433,7 @@ function speakSentence(i) {
   const vIdx = voiceSel.value;
   if (vIdx !== '') u.voice = synth.getVoices()[vIdx];
 
-  u.onend = () => { if (playing) speakSentence(idx + 1); };
+  u.onend = () => { if (playing) speakSentence(nextAfter(idx)); };
   u.onerror = () => { setPlayingUI(false); };
   synth.speak(u);
 }
@@ -1434,6 +1464,66 @@ function jumpTo(i, autoplay) {
   if (autoplay) { playing = true; setPlayingUI(true); speakSentence(idx); }
   else { cancelSpeech(); updateHighlight(); updateProgress(); }
 }
+
+// ---- repeat file / A-B loop ----
+function loopRange() { return (abA >= 0 && abB >= abA) ? { a: abA, b: abB } : { a: -1, b: -1 }; }
+
+// Which sentence comes after i: back to A at the end of an A-B loop, back to 1 at the end of the file if Repeat is on.
+function nextAfter(i) {
+  if (abA >= 0 && abB >= abA && i === abB) return abA;
+  if (i + 1 >= sentences.length && repeatAll) return 0;
+  return i + 1;
+}
+
+function loopButtonsUI() {
+  repeatBtn.classList.toggle('on', repeatAll);
+  repeatBtn.setAttribute('aria-pressed', String(repeatAll));
+  abBtn.classList.toggle('on', abA >= 0);
+  abBtn.setAttribute('aria-pressed', String(abA >= 0));
+  abText.textContent = abA < 0 ? 'A-B' : (abB < 0 ? 'A-?' : 'A-B');
+}
+
+function paintLoop() {
+  sentences.forEach((s, i) => {
+    if (!s.el) return;
+    const c = s.el.classList;
+    c.toggle('ab-a', i === abA);
+    c.toggle('ab-b', i === abB);
+    c.toggle('ab-in', abA >= 0 && abB >= 0 && i > abA && i < abB);
+  });
+  loopButtonsUI();
+}
+
+function resetLoops() { abA = -1; abB = -1; loopButtonsUI(); }
+
+function pushLoop() {
+  if (!BG) return;
+  const r = loopRange();
+  BG.setLoop({ a: r.a, b: r.b, repeat: repeatAll }).catch(() => {});
+}
+
+repeatBtn.addEventListener('click', () => {
+  repeatAll = !repeatAll;
+  loopButtonsUI();
+  pushLoop();
+  showToast(repeatAll ? 'Repeat file: on' : 'Repeat file: off');
+});
+
+abBtn.addEventListener('click', () => {
+  if (!sentences.length) return;
+  if (abA < 0) {
+    abA = idx; abB = -1;
+    showToast('Loop start (A) set. Tap again to set the end (B).');
+  } else if (abB < 0) {
+    if (idx < abA) { abB = abA; abA = idx; } else { abB = idx; }
+    showToast('Looping sentences ' + (abA + 1) + ' to ' + (abB + 1));
+  } else {
+    abA = -1; abB = -1;
+    showToast('Loop cleared');
+  }
+  paintLoop();
+  pushLoop();
+});
 
 playBtn.addEventListener('click', () => { playing ? pausePlayback() : play(); });
 prevBtn.addEventListener('click', () => jumpTo(idx - 1, playing));
