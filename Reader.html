@@ -684,7 +684,11 @@ const synth = window.speechSynthesis || null;
 // so we talk to the phone's native text-to-speech plugin instead.
 // (tts.js, bundled in only by the APK build, sets window.__TTS; it never throws here.)
 const NativeTTS = (function () { try { return window.__TTS || null; } catch (e) { return null; } })();
-const hasSpeech = !!(NativeTTS || synth);
+// Background player (Android app only): a native service speaks the text, so reading keeps going
+// with the screen off or the app minimized, with notification + lock screen controls.
+// (Registered by the APK build as window.__BG; it is null in a normal browser.)
+const BG = (function () { try { return window.__BG || null; } catch (e) { return null; } })();
+const hasSpeech = !!(BG || NativeTTS || synth);
 let nativeVoices = [];
 let speakToken = 0;   // bumps on every cancel so stale 'finished' callbacks are ignored
 
@@ -700,7 +704,8 @@ function showToast(msg) {
 
 function cancelSpeech() {
   speakToken++;
-  if (NativeTTS) { NativeTTS.stop().catch(() => {}); }
+  if (BG) { bgCmdAt = Date.now(); bgGen++; BG.pause().catch(() => {}); }
+  else if (NativeTTS) { NativeTTS.stop().catch(() => {}); }
   else if (synth) { synth.cancel(); }
 }
 
@@ -1285,6 +1290,82 @@ backBtn.addEventListener('click', () => {
   renderRecent();
 });
 
+// ---- background player glue (Android app) ----
+let bgCmdAt = 0;          // time of our last command, so a late status reply can't undo it
+let bgGen = 0;            // numbers our play requests; phone-side changes use -1
+let bgLoadedFor = null;   // which sentences array the phone side currently holds
+
+async function bgEnsureText() {
+  if (bgLoadedFor === sentences) return;
+  const texts = sentences.map((s) => s.text);
+  const CH = 800;
+  for (let k = 0; k < texts.length; k += CH) {
+    await BG.setText({ texts: texts.slice(k, k + CH), reset: k === 0 });
+  }
+  bgLoadedFor = sentences;
+}
+
+async function bgPlay(i) {
+  const myGen = ++bgGen;
+  bgCmdAt = Date.now();
+  try {
+    await bgEnsureText();
+    if (myGen !== bgGen || !playing) return;   // user already did something else
+    const v = nativeVoices[voiceSel.value];
+    bgCmdAt = Date.now();
+    await BG.play({
+      index: i,
+      gen: myGen,
+      rate: parseFloat(speedRange.value),
+      voice: v ? (v.voiceURI || v.name || '') : '',
+      lang: (v && v.lang) || 'en-US',
+      title: loadedName !== 'Untitled' ? loadedName : 'Reader'
+    });
+  } catch (err) {
+    if (myGen !== bgGen) return;
+    playing = false; setPlayingUI(false);
+    showToast('Could not play: ' + ((err && err.message) || err));
+  }
+}
+
+// Pull the phone side's position/state (it may have moved on while the screen was off).
+async function bgSync() {
+  if (!BG || bgLoadedFor !== sentences || Date.now() - bgCmdAt < 1500) return;
+  try {
+    const s = await BG.getState();
+    if (Date.now() - bgCmdAt < 1500) return;
+    if (s.active && s.count === sentences.length) {
+      if (s.index !== idx && s.index >= 0 && s.index < sentences.length) {
+        idx = s.index; updateHighlight(true); updateProgress();
+      }
+      if (s.playing !== playing) { playing = s.playing; setPlayingUI(playing); }
+    } else if (playing && !s.active) {
+      playing = false; setPlayingUI(false);   // service ended while we were away
+    }
+  } catch (e) {}
+}
+
+if (BG) {
+  // sentence changes (and notification/lock screen buttons) while the app is open
+  BG.addListener('sentence', (e) => {
+    if (e.gen !== -1 && e.gen !== bgGen) return;   // late event from something we already replaced
+    if (e.index !== idx && e.index >= 0 && e.index < sentences.length) {
+      idx = e.index; updateHighlight(); updateProgress();
+    }
+  });
+  BG.addListener('state', (e) => {
+    if (e.index !== idx && e.index >= 0 && e.index < sentences.length) {
+      idx = e.index; updateHighlight(); updateProgress();
+    }
+    playing = !!e.playing;
+    setPlayingUI(playing);
+  });
+  BG.addListener('error', (e) => { showToast('Speech error: ' + (e && e.message)); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) bgSync(); });
+  window.addEventListener('focus', bgSync);
+  setInterval(() => { if (!document.hidden && playerView.classList.contains('active')) bgSync(); }, 1000);
+}
+
 // ---- playback core (sentence-queue, never relies on native pause/resume) ----
 function speakSentence(i) {
   if (!hasSpeech) return;
@@ -1293,6 +1374,11 @@ function speakSentence(i) {
   idx = i;
   updateHighlight();
   updateProgress();
+
+  if (BG) {
+    bgPlay(i);
+    return;
+  }
 
   if (NativeTTS) {
     const token = ++speakToken;
@@ -1338,6 +1424,7 @@ function pausePlayback() {
 function stopPlayback() {
   playing = false;
   cancelSpeech();
+  if (BG) { bgCmdAt = Date.now(); BG.stop().catch(() => {}); }
   idx = 0;
   setPlayingUI(false);
 }
