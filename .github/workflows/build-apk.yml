@@ -4,6 +4,7 @@ on:
     paths:
       - '*.html'
       - 'docs-entry.js'
+      - 'assets/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 jobs:
@@ -21,7 +22,7 @@ jobs:
       - name: Install packages
         run: |
           npm init -y
-          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6 esbuild pdfjs-dist@4.10.38 mammoth@1.8.0 jszip@3.10.1
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6 @capacitor/assets@3 esbuild pdfjs-dist@4.10.38 mammoth@1.8.0 jszip@3.10.1
       - name: Prepare web files (bundle speech and document readers)
         run: |
           mkdir -p www
@@ -51,6 +52,7 @@ jobs:
         run: |
           npx cap init Reader com.reader.app --web-dir=www
           npx cap add android
+          npx capacitor-assets generate --android
           npx cap sync android
       - name: Add system volume plugin
         run: |
@@ -119,4 +121,3 @@ jobs:
         with:
           name: reader-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          
