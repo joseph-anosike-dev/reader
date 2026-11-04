@@ -4,6 +4,7 @@ on:
     paths:
       - '*.html'
       - 'docs-entry.js'
+      - 'assets/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 jobs:
@@ -21,15 +22,16 @@ jobs:
       - name: Install packages
         run: |
           npm init -y
-          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6 esbuild pdfjs-dist@4.10.38 mammoth@1.8.0 jszip@3.10.1
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor-community/text-to-speech@6 @capacitor/assets@3 esbuild pdfjs-dist@4.10.38 mammoth@1.8.0 jszip@3.10.1
       - name: Prepare web files (bundle speech and document readers)
         run: |
           mkdir -p www
           cp "$(ls *.html | head -n1)" www/index.html
           cat > tts-entry.js <<'JS'
-          import { Capacitor } from '@capacitor/core';
+          import { Capacitor, registerPlugin } from '@capacitor/core';
           import { TextToSpeech } from '@capacitor-community/text-to-speech';
           window.__TTS = Capacitor.isNativePlatform() ? TextToSpeech : null;
+          window.__VOL = Capacitor.isNativePlatform() ? registerPlugin('SystemVolume') : null;
           JS
           npx esbuild tts-entry.js --bundle --format=iife --minify --outfile=www/tts.js
           SCRIPTS='<script src="tts.js"></script>'
@@ -50,7 +52,66 @@ jobs:
         run: |
           npx cap init Reader com.reader.app --web-dir=www
           npx cap add android
+          npx capacitor-assets generate --android
           npx cap sync android
+      - name: Add system volume plugin
+        run: |
+          DIR=android/app/src/main/java/com/reader/app
+          cat > $DIR/SystemVolumePlugin.java <<'JAVA'
+          package com.reader.app;
+
+          import android.content.Context;
+          import android.media.AudioManager;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          // Reads and sets the phone's real media volume (the one the volume buttons change).
+          @CapacitorPlugin(name = "SystemVolume")
+          public class SystemVolumePlugin extends Plugin {
+              private AudioManager audio() {
+                  return (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+              }
+
+              @PluginMethod
+              public void getVolume(PluginCall call) {
+                  AudioManager am = audio();
+                  JSObject ret = new JSObject();
+                  ret.put("level", am.getStreamVolume(AudioManager.STREAM_MUSIC));
+                  ret.put("max", am.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+                  call.resolve(ret);
+              }
+
+              @PluginMethod
+              public void setVolume(PluginCall call) {
+                  Integer level = call.getInt("level");
+                  if (level == null) { call.reject("level is required"); return; }
+                  AudioManager am = audio();
+                  int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                  am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.max(0, Math.min(max, level)), 0);
+                  call.resolve();
+              }
+          }
+          JAVA
+          cat > $DIR/MainActivity.java <<'JAVA'
+          package com.reader.app;
+
+          import android.media.AudioManager;
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(SystemVolumePlugin.class);
+                  super.onCreate(savedInstanceState);
+                  // hardware volume buttons control media volume while the app is open
+                  setVolumeControlStream(AudioManager.STREAM_MUSIC);
+              }
+          }
+          JAVA
       - name: Build debug APK
         run: |
           cd android
@@ -60,4 +121,3 @@ jobs:
         with:
           name: reader-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          
