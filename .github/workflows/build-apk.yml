@@ -1,4 +1,3 @@
-
 name: Build APK
 on:
   push:
@@ -430,4 +429,317 @@ jobs:
                   stopSelf();
               }
 
-              // From the web page (gen identifies that req
+              // From the web page (gen identifies that request; settings are already stored in the statics).
+              private void userPlayFromJs() { speakFrom(index); }
+
+              // From the notification, lock screen, headset buttons.
+              private void userPlay() {
+                  gen = -1;
+                  speakFrom(index);
+                  Listener l = listener;
+                  if (l != null) l.onState(true, index, false);
+              }
+
+              private void userPause() { pauseNow(true, true); }
+
+              private void userJump(int delta) {
+                  gen = -1;
+                  int n = Math.max(0, Math.min(sentences.size() - 1, index + delta));
+                  if (playing) {
+                      speakFrom(n);
+                  } else {
+                      index = n;
+                      refresh();
+                  }
+                  Listener l = listener;
+                  if (l != null) l.onSentence(index, gen);
+              }
+
+              private void userStop() { stopAll(true); }
+
+              // Called by the plugin (already on the main thread).
+              void pauseFromJs() { pauseNow(false, true); }
+              void stopFromJs() { stopAll(false); }
+
+              // ---------------- audio focus, wake lock, headphones ----------------
+              private final AudioManager.OnAudioFocusChangeListener focusListener = new AudioManager.OnAudioFocusChangeListener() {
+                  @Override public void onAudioFocusChange(int change) {
+                      if (change == AudioManager.AUDIOFOCUS_LOSS) {
+                          resumeOnFocus = false;
+                          if (playing) pauseNow(true, true);
+                      } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                          if (playing) { resumeOnFocus = true; pauseNow(true, false); }
+                      } else if (change == AudioManager.AUDIOFOCUS_GAIN) {
+                          if (resumeOnFocus) { resumeOnFocus = false; userPlay(); }
+                      }
+                  }
+              };
+
+              private void requestFocus() {
+                  try {
+                      if (Build.VERSION.SDK_INT >= 26) {
+                          if (focusReq == null) {
+                              focusReq = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                                      .setAudioAttributes(new AudioAttributes.Builder()
+                                              .setUsage(AudioAttributes.USAGE_MEDIA)
+                                              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                              .build())
+                                      .setOnAudioFocusChangeListener(focusListener, handler)
+                                      .build();
+                          }
+                          audio.requestAudioFocus(focusReq);
+                      } else {
+                          audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+                      }
+                  } catch (Exception e) {}
+              }
+
+              private void abandonFocus() {
+                  try {
+                      if (Build.VERSION.SDK_INT >= 26) { if (focusReq != null) audio.abandonAudioFocusRequest(focusReq); }
+                      else audio.abandonAudioFocus(focusListener);
+                  } catch (Exception e) {}
+              }
+
+              private void acquireWake() {
+                  try {
+                      if (wakeLock == null) {
+                          PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                          wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "reader:playback");
+                          wakeLock.setReferenceCounted(false);
+                      }
+                      if (!wakeLock.isHeld()) wakeLock.acquire(8L * 60 * 60 * 1000);
+                  } catch (Exception e) {}
+              }
+
+              private void releaseWake() {
+                  try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Exception e) {}
+              }
+
+              private final BroadcastReceiver noisy = new BroadcastReceiver() {
+                  @Override public void onReceive(Context c, Intent i) {
+                      if (playing) pauseNow(true, true);   // headphones unplugged
+                  }
+              };
+
+              private void registerNoisy() {
+                  if (noisyRegistered) return;
+                  try { registerReceiver(noisy, new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)); noisyRegistered = true; }
+                  catch (Exception e) {}
+              }
+
+              private void unregisterNoisy() {
+                  if (!noisyRegistered) return;
+                  try { unregisterReceiver(noisy); } catch (Exception e) {}
+                  noisyRegistered = false;
+              }
+
+              // ---------------- notification + lock screen ----------------
+              private String currentLine() {
+                  String s = textAt(index).replaceAll("\\s+", " ").trim();
+                  if (s.length() > 110) s = s.substring(0, 107) + "...";
+                  return s;
+              }
+
+              private void refresh() {
+                  try {
+                      updateSession();
+                      nm.notify(NOTIF_ID, buildNotification());
+                  } catch (Exception e) {}
+              }
+
+              private void updateSession() {
+                  if (session == null) return;
+                  int total = sentences.size();
+                  session.setMetadata(new MediaMetadata.Builder()
+                          .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                          .putString(MediaMetadata.METADATA_KEY_ARTIST, currentLine())
+                          .putString(MediaMetadata.METADATA_KEY_ALBUM, (index + 1) + " / " + total)
+                          .build());
+                  long actions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
+                          | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP;
+                  session.setPlaybackState(new PlaybackState.Builder()
+                          .setActions(actions)
+                          .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
+                                  PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1f : 0f)
+                          .build());
+              }
+
+              private PendingIntent actionIntent(String action, int code) {
+                  Intent i = new Intent(this, ReaderPlaybackService.class).setAction(action);
+                  return PendingIntent.getService(this, code, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+              }
+
+              private Notification.Action act(int icon, String label, String action, int code) {
+                  return new Notification.Action.Builder(Icon.createWithResource(this, icon), label, actionIntent(action, code)).build();
+              }
+
+              private Notification buildNotification() {
+                  Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                          ? new Notification.Builder(this, CHANNEL)
+                          : new Notification.Builder(this);
+                  Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                  if (launch != null) {
+                      b.setContentIntent(PendingIntent.getActivity(this, 0, launch,
+                              PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+                  }
+                  b.setSmallIcon(android.R.drawable.ic_media_play)
+                          .setContentTitle(title)
+                          .setContentText(currentLine())
+                          .setOngoing(true)
+                          .setShowWhen(false)
+                          .setOnlyAlertOnce(true)
+                          .setVisibility(Notification.VISIBILITY_PUBLIC)
+                          .addAction(act(android.R.drawable.ic_media_previous, "Previous", A_PREV, 1))
+                          .addAction(playing
+                                  ? act(android.R.drawable.ic_media_pause, "Pause", A_TOGGLE, 2)
+                                  : act(android.R.drawable.ic_media_play, "Play", A_TOGGLE, 2))
+                          .addAction(act(android.R.drawable.ic_media_next, "Next", A_NEXT, 3))
+                          .addAction(act(android.R.drawable.ic_menu_close_clear_cancel, "Stop", A_STOP, 4))
+                          .setStyle(new Notification.MediaStyle()
+                                  .setMediaSession(session.getSessionToken())
+                                  .setShowActionsInCompactView(0, 1, 2));
+                  if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_LOW);
+                  return b.build();
+              }
+          }
+          JAVA
+          cat > $DIR/ReaderPlaybackPlugin.java <<'JAVA'
+          package com.reader.app;
+
+          import android.content.Context;
+          import android.content.Intent;
+          import android.os.Build;
+          import android.os.Handler;
+          import android.os.Looper;
+          import com.getcapacitor.JSArray;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          // Bridge between Reader.html and ReaderPlaybackService (background reading).
+          @CapacitorPlugin(name = "ReaderPlayback")
+          public class ReaderPlaybackPlugin extends Plugin {
+
+              private final Handler main = new Handler(Looper.getMainLooper());
+
+              @Override
+              public void load() {
+                  ReaderPlaybackService.listener = new ReaderPlaybackService.Listener() {
+                      @Override public void onSentence(int index, int gen) {
+                          JSObject o = new JSObject();
+                          o.put("index", index);
+                          o.put("gen", gen);
+                          notifyListeners("sentence", o);
+                      }
+                      @Override public void onState(boolean playing, int index, boolean ended) {
+                          JSObject o = new JSObject();
+                          o.put("playing", playing);
+                          o.put("index", index);
+                          o.put("ended", ended);
+                          notifyListeners("state", o);
+                      }
+                      @Override public void onError(String message) {
+                          JSObject o = new JSObject();
+                          o.put("message", message);
+                          notifyListeners("error", o);
+                      }
+                  };
+              }
+
+              // Hand the document's sentences to the phone side (sent in chunks; reset = true on the first chunk).
+              @PluginMethod
+              public void setText(PluginCall call) {
+                  try {
+                      if (call.getBoolean("reset", false)) ReaderPlaybackService.sentences.clear();
+                      JSArray arr = call.getArray("texts");
+                      if (arr != null) {
+                          java.util.ArrayList<String> part = new java.util.ArrayList<>(arr.length());
+                          for (int i = 0; i < arr.length(); i++) part.add(arr.getString(i));
+                          ReaderPlaybackService.sentences.addAll(part);
+                      }
+                      call.resolve();
+                  } catch (Exception e) {
+                      call.reject("Could not load text: " + e.getMessage());
+                  }
+              }
+
+              @PluginMethod
+              public void play(PluginCall call) {
+                  int count = ReaderPlaybackService.sentences.size();
+                  if (count == 0) { call.reject("Nothing loaded"); return; }
+                  ReaderPlaybackService.index = Math.max(0, Math.min(count - 1, call.getInt("index", 0)));
+                  ReaderPlaybackService.rate = call.getFloat("rate", 1f);
+                  String v = call.getString("voice", "");
+                  ReaderPlaybackService.voiceKey = v == null ? "" : v;
+                  ReaderPlaybackService.lang = call.getString("lang", "en-US");
+                  ReaderPlaybackService.title = call.getString("title", "Reader");
+                  ReaderPlaybackService.gen = call.getInt("gen", 0);
+                  ReaderPlaybackService.playing = true;
+                  Context ctx = getContext();
+                  Intent i = new Intent(ctx, ReaderPlaybackService.class).setAction(ReaderPlaybackService.A_PLAY);
+                  try {
+                      if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i); else ctx.startService(i);
+                      call.resolve();
+                  } catch (Exception e) {
+                      ReaderPlaybackService.playing = false;
+                      call.reject("Could not start background playback: " + e.getMessage());
+                  }
+              }
+
+              @PluginMethod
+              public void pause(final PluginCall call) {
+                  final ReaderPlaybackService s = ReaderPlaybackService.instance;
+                  ReaderPlaybackService.playing = false;
+                  if (s != null) main.post(new Runnable() { @Override public void run() { s.pauseFromJs(); } });
+                  call.resolve();
+              }
+
+              @PluginMethod
+              public void stop(final PluginCall call) {
+                  final ReaderPlaybackService s = ReaderPlaybackService.instance;
+                  ReaderPlaybackService.playing = false;
+                  if (s != null) main.post(new Runnable() { @Override public void run() { s.stopFromJs(); } });
+                  call.resolve();
+              }
+
+              @PluginMethod
+              public void getState(PluginCall call) {
+                  JSObject o = new JSObject();
+                  o.put("active", ReaderPlaybackService.instance != null);
+                  o.put("playing", ReaderPlaybackService.playing);
+                  o.put("index", ReaderPlaybackService.index);
+                  o.put("count", ReaderPlaybackService.sentences.size());
+                  call.resolve(o);
+              }
+          }
+          JAVA
+      - name: Allow background playback (manifest)
+        run: |
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          perms = (
+              '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+              '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />\n'
+              '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n'
+              '    <uses-permission android:name="android.permission.WAKE_LOCK" />\n'
+          )
+          service = '        <service android:name=".ReaderPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\n'
+          assert '<application' in s and '</application>' in s, 'unexpected manifest'
+          s = s.replace('<application', perms + '    <application', 1)
+          s = s.replace('</application>', service + '    </application>', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
+          cat android/app/src/main/AndroidManifest.xml
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
