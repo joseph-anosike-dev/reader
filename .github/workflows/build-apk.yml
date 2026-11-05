@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - '*.html'
+      - '*.css'
+      - 'app.js'
       - 'docs-entry.js'
       - 'assets/**'
       - '.github/workflows/build-apk.yml'
@@ -27,6 +29,11 @@ jobs:
         run: |
           mkdir -p www
           cp "$(ls *.html | head -n1)" www/index.html
+          # the page's own stylesheet and script (everything else is bundled below)
+          for f in style.css app.js; do
+            if [ ! -f "$f" ]; then echo "ERROR: $f is missing from the repo"; exit 1; fi
+            cp "$f" www/
+          done
           cat > tts-entry.js <<'JS'
           import { Capacitor, registerPlugin } from '@capacitor/core';
           import { TextToSpeech } from '@capacitor-community/text-to-speech';
@@ -46,7 +53,9 @@ jobs:
           import os
           p = 'www/index.html'
           s = open(p, encoding='utf-8').read()
-          s = s.replace('<script>', os.environ['SCRIPTS'] + '\n<script>', 1)
+          marker = '<script src="app.js"></script>'
+          assert marker in s, 'index.html must contain ' + marker
+          s = s.replace(marker, os.environ['SCRIPTS'] + '\n' + marker, 1)
           open(p, 'w', encoding='utf-8').write(s)
           PY
       - name: Create Android project
