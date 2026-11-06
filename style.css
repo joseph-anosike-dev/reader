@@ -524,7 +524,10 @@ input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px va
 
 /* volume + speed rows under the transport buttons */
 .slider-row { display: flex; align-items: center; gap: 10px; height: 46px; }
-.slider-row + .slider-row { margin-top: 6px; }
+/* Volume sits 8px lower (closer to speed, further from the play button).
+   Speed stays where it was: its gap shrinks by the same 8px, so the touch areas just touch. */
+.transport + .slider-row { margin-top: 8px; }
+.slider-row + .slider-row { margin-top: -2px; }
 .slider-ico { width: 26px; flex-shrink: 0; display: grid; place-items: center; color: var(--ink-soft); }
 .slider-val { width: 52px; flex-shrink: 0; text-align: right; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
 .speed-value {
